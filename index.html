@@ -19141,7 +19141,7 @@ ${BUILD_HINT[t.id] || ''}` : name + (t.key ? ` (${t.key})` : '');
     if (hp < hm || p.broken) btns = `<button data-act="post-fix" data-cost="${money(fixC)}"${poor(fixC) ? ' disabled' : ''}>바로 수리</button><button data-act="post-crew"${p.fixFirst ? ' disabled' : ''}>${p.fixFirst ? '정비반 오는 중' : '정비반 부르기'}</button>` + btns;
     if (wl < WALL_MAX && !p.broken) btns += `<button data-act="post-wall" data-cost="${money(WALL_COST[wl])}"${poor(WALL_COST[wl]) ? ' disabled' : ''}>방호벽 ${wl + 1}단계</button>`;
     const sup = postSupport(w, p), supHtml = p.tur && p.tur.type !== 'light' && sup.lines.length ? `<div class="ps-chips sup"><small>부대 지원</small>${sup.lines.map((l) => `<span>${esc(l)}</span>`).join('')}</div>` : '';
-    return `<div class="sheet ps"><h2>${p.id}초소</h2><div class="ps-crew">${gs.length ? `${gs.map((g) => `${esc(w.rankName(g))} ${esc(g.name)}`).join(' · ')} <small>사격 ${avgM} · 솜씨 ×${k.toFixed(2)}</small>` : '<b class="whyno">근무자 없음 — 무기를 달면 사람을 붙입니다</b>'}</div>${bars}${body}${supHtml}<div class="row">${btns}<button class="alt" data-act="close">닫기</button></div></div>`;
+    return `<div class="sheet ps"><h2>${p.id}초소</h2><div class="ps-crew">${gs.length ? `${gs.map((g) => `${esc(w.rankName(g))} ${esc(g.name)}`).join(' · ')} <small>사격 ${avgM} · 솜씨 ×${k.toFixed(2)}</small>` : '<b class="whyno">근무자 없음 — 무기를 달면 사람을 붙입니다</b>'}</div><div class="row" style="margin:4px 0 6px">${btns}<button class="alt" data-act="close">닫기</button></div>${bars}${body}${supHtml}</div>`; // 증설·수리 단추는 맨 위 (스크롤 안 내려도 보이게)
   }
 
   closePanel() {
@@ -19772,8 +19772,7 @@ ${BUILD_HINT[t.id] || ''}` : name + (t.key ? ` (${t.key})` : '');
       const wear = Math.round(b.wear || 0);
       const fix = b.damaged ? `<button data-act="repair">수리 (${money(w.repairCost(b))} 원)</button>` : wear >= 25 && b.type !== 'gate' ? `<button data-act="maintain">정비 (${money(w.maintainCost(b))} 원)</button>` : '';
       if (b.type !== 'gate' && !b.damaged) lines.push(`<span style="color:${wear >= 75 ? '#ff6a52' : wear >= 50 ? '#ffd84a' : 'inherit'}">노후 ${wear}%${wear >= 75 ? ' — 곧 고장 납니다' : ''}</span>`);
-      const html = `<div class="sheet"><h2>${def.name}</h2><div class="rel" style="margin-top:4px">${lines.join('<br>')}</div>
-        <div class="row">${fix}${up}${(b.type === 'field' || b.type === 'futsal') && !b.damaged ? `<button data-act="jokgu"${w.jokguWeek === w.week || w.raid ? ' disabled' : ''}>족구 한 판${w.jokguWeek === w.week ? ' (이번 주 함)' : w.raid ? ' (교전 중)' : ''}</button>` : ''}${b.type === 'futsal' && !b.damaged ? `<button data-act="soccer"${w.soccerWeek === w.week || w.raid ? ' disabled' : ''}>축구 한 판${w.soccerWeek === w.week ? ' (이번 주 함)' : w.raid ? ' (교전 중)' : ''}</button>` : ''}<button class="alt" data-act="close">닫기</button></div></div>`;
+      const html = `<div class="sheet"><h2>${def.name}</h2><div class="row" style="margin:4px 0 6px">${fix}${up}${(b.type === 'field' || b.type === 'futsal') && !b.damaged ? `<button data-act="jokgu"${w.jokguWeek === w.week || w.raid ? ' disabled' : ''}>족구 한 판${w.jokguWeek === w.week ? ' (이번 주 함)' : w.raid ? ' (교전 중)' : ''}</button>` : ''}${b.type === 'futsal' && !b.damaged ? `<button data-act="soccer"${w.soccerWeek === w.week || w.raid ? ' disabled' : ''}>축구 한 판${w.soccerWeek === w.week ? ' (이번 주 함)' : w.raid ? ' (교전 중)' : ''}</button>` : ''}<button class="alt" data-act="close">닫기</button></div><div class="rel">${lines.join('<br>')}</div></div>`; // 증축·수리 단추는 이름 바로 밑에 (스크롤 안 내려도 보이게)
       this.setPanel(p, html);
       return;
     }
