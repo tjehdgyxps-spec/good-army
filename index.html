@@ -5375,6 +5375,7 @@ function stepPosts(w, dm) {
   // 방어 진지 경계조: 새 판은 병력의 60%에서 초소 근무자를 뺀 만큼 진지에 들어간다 (철책에 가까운 진지부터).
   // 병력이 늘수록 더 많은 진지가 살아난다 → 신병이 곧 화력
   const gar = garrisons(w);
+  for (const b of w.ofType('bunker')) if (b.gar && !gar.includes(b.gar) && (b.gar.guards.length || b.gar.reliefs.length)) { for (const id of [...b.gar.guards, ...b.gar.reliefs]) { const s = w.soldier(id); if (s && (s.state === 'post' || s.state === 'toPost')) release(w, s); } b.gar.guards = []; b.gar.reliefs = []; } // 부서지거나 공사 중인 진지: 경계조를 내린다
   if (w.fresh) { let left = guardRoom(w); gar.forEach((g) => { g.open = w.soldiers.length >= 12 && left >= g.size; if (g.open) left -= g.size; }); } // 새 판: 병력의 60%까지 경계에 선다 (초소 먼저, 남는 만큼 진지)
   else { const nOpen = Math.max(0, Math.floor((w.soldiers.length - 30) / 8) + 1); gar.forEach((g, i) => { g.open = i < nOpen; }); }
   if (w.reinforce && !w.reinforce.open && !w.reinforce.guards.length && !w.reinforce.reliefs.length) w.reinforce = null; // 다 돌아왔다
@@ -9416,6 +9417,7 @@ class World {
 
   removeBuilding(b) {
     const exitTile = this.entrances(b)[0] || this.gateTile();
+    for (const id of [...(b.gar?.guards || []), ...(b.gar?.reliefs || [])]) { const g = this.soldier(id); if (g && (g.state === 'post' || g.state === 'toPost')) { g.state = 'idle'; g.dutyPost = null; g.moving = false; this.ensureOnRoad?.(g); } } // 진지를 헐면 경계조도 내려온다
     for (const s of this.soldiers) {
       if (s.inside === b.id) this.leaveBuilding(s, b, exitTile);
       if (s.target === b.id) { s.target = null; s.state = 'idle'; s.next = null; }
