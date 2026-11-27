@@ -1,0 +1,16 @@
+좋은 군대 만들기 — 음원 출처 (전부 CC0 1.0: 출처 표기 의무 없음, 상업적 사용 가능)
+
+sfx/ui_*.ogg            Kenney "Interface Sounds"  https://kenney.nl/assets/interface-sounds
+sfx/stamp, build, wreck, road, rake, shovel, clink, metal
+                        Kenney "Impact Sounds"     https://kenney.nl/assets/impact-sounds
+sfx/coin, paper, latch, cloth
+                        Kenney "RPG Audio"         https://kenney.nl/assets/rpg-audio
+sfx/boomlow*, boomcrack*, thrust*
+                        Kenney "Sci-fi Sounds"     https://kenney.nl/assets/sci-fi-sounds
+sfx/rifle*.ogg, enemy*.ogg
+                        The Free Firearm Sound Library (AR-15, AK-47 녹음에서 한 발씩 잘라 씀)
+                        https://opengameart.org/content/the-free-firearm-sound-library
+amb/birds.ogg           isaiah658 "Ambient Bird Sounds"  https://opengameart.org/content/ambient-bird-sounds
+amb/crickets.ogg        "Crickets Ambient Noise (Loopable)"  https://opengameart.org/content/crickets-ambient-noise-loopable
+
+나팔 신호와 행진곡은 코드로 합성한다 (src/audio.js).
