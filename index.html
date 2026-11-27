@@ -3520,7 +3520,7 @@ const GOLD = { ...BASE, c: '#c8982a', d: '#946e1a', h: '#e0b84a', a: '#fff0b0', 
 const LEADS = Object.keys(N);
 const ACTS = ['고대의 침략', '고려의 침략', '조선의 침략', '근대의 침략', '6·25와 그 너머'];
 const ACT_SUB = ['한나라 · 위나라 · 수나라 · 당나라', '거란 · 여진 · 몽골 · 홍건적 · 왜구', '임진왜란 왜군 · 청나라', '서양 함대 · 일본 제국군', '북한군 · 중공군 · 틈을 연 자'];
-const actNo = (no) => Math.min(ACTS.length - 1, Math.max(0, Math.floor((no - 1) / 13))); // 몇 막인가
+const actNo = (no) => Math.min(ACTS.length - 1, Math.max(0, Math.floor((no - 1) / 18))); // 몇 막인가: 세 구간(웨이브 18)마다 한 시대 (rounds.js)
 // 막마다 흔한 보병, 선봉으로 끝없이 나오는 것들
 const GRUNT = ['han', 'liao', 'ashi', 'ija', 'nk'];
 const gruntOf = (no) => GRUNT[actNo(no)];
@@ -3679,6 +3679,94 @@ function takePerk(w, i) {
 
 return { STAT, PERKS, PERK_MAX, PERK_EVERY, maxOf, lvOf, UPG, upgLv, MY_R, MY_ACC, MERIT_STEP, meritNext, myActive, addMerit, upgCost, buyUpg, pk, effects, reason, offerPerks, takePerk };
 })();
+// ===== src/rounds.js =====
+__X["src/rounds.js"] = (function () {
+'use strict';
+// 라운드 설계표: 정규 웨이브의 수·체력·순서·시각을 여기서 정한다 (horde.js가 그대로 쓴다. 화면의 웨이브 정보도 이 값).
+// 한 구간 = 웨이브 여섯 + 총공세. 구간마다 같은 순서로 다른 약점을 찌른다:
+//   1 정면(기준)  2 속도(사거리 안에 머무는 시간이 짧다)  3 장갑(기관총·발칸 절반)  4 물량(범위 공격)  5 공중(대공)  6 보스+호위 → 총공세
+// 임기(52일 = 화면 104주) = 15구간 90라운드. 마지막 구간은 공중 웨이브에 최종 보스가 합류한다 (예고한다).
+// 그 뒤(연임·말뚝박은인생)는 성장 규칙으로 끝없이 이어진다.
+
+const SLOTS = ['line', 'rush', 'armor', 'swarm', 'air', 'boss'];
+const PER_BLOCK = 6;
+const BLOCKS = 15;
+const FINAL_NO = BLOCKS * PER_BLOCK; // 90
+const ROUND_HOURS = [10, 22]; // 웨이브는 이 시각에만 나온다 (총공세가 끼면 한 번 쉰다)
+const FINAL_JOIN = 90; // 마지막 구간: 공중 웨이브가 출발하고 90분 뒤 최종 보스가 합류
+const NEED = { // 그 웨이브가 시험하는 역할 (졌을 때 무엇이 모자랐는지 알려 준다)
+  line: '기본 화력', rush: '연사 (기관총 · 사거리가 긴 초소)', armor: '관통 (저격 · 박격포 — 기관총·발칸은 절반만 박힘)',
+  swarm: '범위 공격 (박격포 · 3단계 유탄 · 포격)', air: '대공 (대공 초소 · 6단계 기관총)', boss: '집중 화력 (저격 · 포격 · 집중 사격 지정)',
+};
+
+// 구간 b(1~15)의 기준 값. 대표 편성(tools/roundlab.mjs base)으로 실제 돌려 맞췄다 (docs/라운드-설계.md)
+//   n: 정면 웨이브가 테두리에 세우는 인원 · u: 정면 보병 한 명 체력 · boss: 보스 체력 · esc: 보스 호위 수 · stay: 바깥에 남아 총공세를 기다리는 비율
+const TABLE = [
+  //  n   u      boss   esc  stay
+  [3,  1.6,    12,    2,   0],    // 1  기본기: 초소 셋으로도 막는다 (다 깔면 넉넉)
+  [5,  2.8,    22,    3,   0.15], // 2
+  [7,  4,      30,    4,   0.2],  // 3
+  [9,  7,      48,    5,   0.2],  // 4
+  [11, 12,     58,    6,   0.2],  // 5  중간 보스 1
+  [13, 13.5,   75,    7,   0.2],  // 6
+  [15, 19,     95,    8,   0.2],  // 7
+  [17, 25,     120,   9,   0.2],  // 8
+  [19, 33,     150,   10,  0.2],  // 9
+  [21, 42,     230,   11,  0.2],  // 10 중간 보스 2
+  [23, 52,     260,   12,  0.2],  // 11
+  [25, 64,     330,   13,  0.2],  // 12
+  [27, 90,     430,   14,  0.2],  // 13
+  [29, 125,    700,   15,  0.2],  // 14
+  [31, 190,    1400,  16,  0.2],  // 15 최종
+];
+// 웨이브 성격별: 인원 배수 · 한 명 체력 배수 (장갑은 기관총이 절반만 박히니 실제로는 더 질기다)
+const SLOT_K = {
+  line:  { n: 1,   hp: 1 },
+  rush:  { n: 0.8, hp: 0.57, late: 0.85 }, // late: 13구간부터 한 명 체력 배수 (빨라서 사거리 안에 머무는 시간이 짧다: 지름길 탐지기 '벽')
+  armor: { n: 0.5, hp: 2.6 },
+  swarm: { n: 2,   hp: 0.64 },
+  air:   { n: 0.7, hp: 1 },
+  boss:  { n: 0,   hp: 1.5 }, // 호위 한 명 체력 배수 (인원은 TABLE의 esc)
+};
+// 첫 구간은 하늘 적을 예고만 한다 (기관총으로도 잡힌다): 둘째 구간부터 대공이 필요하다
+const AIR_PREVIEW = 2;
+
+const blockOf = (no) => Math.floor((no - 1) / PER_BLOCK) + 1;
+const slotOf = (no) => SLOTS[(no - 1) % PER_BLOCK];
+const isFinal = (no) => no === FINAL_NO;
+// 성장 규칙 (90라운드 뒤 · 연임·말뚝박은인생): 첫 구간은 15구간의 85%로 숨을 돌리고, 그 뒤 구간마다
+//   인원 +1 (60까지) · 한 명 체력 ×1.12 · 보스 ×1.15 (14구간 보스 기준) · 호위 +1 (24까지)
+function rowOf(b) {
+  if (b <= BLOCKS) { const [n, u, boss, esc, stay] = TABLE[b - 1]; return { n, u, boss, esc, stay }; }
+  const L = TABLE[BLOCKS - 1], k = b - BLOCKS;
+  return { n: Math.min(60, L[0] + k), u: L[1] * 0.85 * 1.12 ** (k - 1), boss: TABLE[BLOCKS - 2][2] * 1.15 ** k, esc: Math.min(24, L[3] + k), stay: L[4] };
+}
+
+// 한 라운드의 설계 값 (horde.js planWave가 쓴다)
+function roundPlan(no) {
+  const b = blockOf(no), slot = slotOf(no), R = rowOf(b), K = SLOT_K[slot];
+  let n = slot === 'boss' ? R.esc : Math.max(1, Math.round(R.n * K.n));
+  if (slot === 'air' && b === 1) n = AIR_PREVIEW;
+  const unitHp = R.u * K.hp * (K.late && b >= 13 ? K.late : 1);
+  const stay = slot === 'boss' ? 0 : R.stay;
+  const total = n + Math.round(n * stay / (1 - stay)); // 테두리를 도는 n명 + 바깥에 남는 몫
+  return { block: b, slot, n, total, unitHp, hp: Math.round(unitHp * n * 10) / 10, bossHp: slot === 'boss' ? Math.round(R.boss) : 0, stay, need: NEED[slot], final: isFinal(no), joinFinal: no === FINAL_NO - 1 };
+}
+
+// 웨이브 시각: 매일 10시·22시 (말뚝박은인생은 간격이 짧아진다: gap 분). t 뒤 첫 칸
+function nextSlot(t, gap = 720) {
+  const DAY = 1440, base = ROUND_HOURS[0] * 60;
+  if (gap >= 720) { const d = Math.floor(t / DAY); for (let k = 0; k < 6; k++) for (const hr of ROUND_HOURS) { const at = (d + k) * DAY + hr * 60; if (at >= t) return at; } }
+  return base + Math.ceil((t - base) / gap) * gap;
+}
+// 철책 습격(진돗개) 인원 허용 범위: 구간 b에서 3명 ~ 6+2b명 (32명까지). 난수·놓친 적 수가 흔들어도 이 안에 든다
+// 90라운드 뒤에는 아래 끝도 오른다 (구간마다 +2) · 위 끝 60명
+const raidRange = (no) => { const b = blockOf(Math.max(1, no)), hi = Math.min(b > BLOCKS ? 60 : 32, 6 + 2 * b); return [Math.min(hi, 3 + Math.max(0, b - BLOCKS) * 2), hi]; };
+// 90라운드 뒤 습격 적 한 명이 더 질겨지는 몫 (두 구간마다 +1)
+const raidHpBonus = (no) => Math.floor(Math.max(0, blockOf(Math.max(1, no)) - BLOCKS) / 2);
+
+return { SLOTS, PER_BLOCK, BLOCKS, FINAL_NO, ROUND_HOURS, FINAL_JOIN, NEED, TABLE, SLOT_K, blockOf, slotOf, isFinal, rowOf, roundPlan, nextSlot, raidRange, raidHpBonus };
+})();
 // ===== src/crew.js =====
 __X["src/crew.js"] = (function () {
 'use strict';
@@ -3762,9 +3850,10 @@ return { WALL_COST, WALL_MAX, wallMax, buildWall, wallTakes, crewSize, stepCrew,
 // ===== src/push.js =====
 __X["src/push.js"] = (function () {
 'use strict';
-const { pushEvery } = __X["src/endless.js"];
-let LANE_OFF, nearestD, laneLen;
-__late.push(() => { ({ LANE_OFF, nearestD, laneLen } = __X["src/horde.js"]); });
+const { pushEvery, gapK } = __X["src/endless.js"];
+const { nextSlot } = __X["src/rounds.js"];
+let LANE_OFF, nearestD, laneLen, pileSummary, pileText;
+__late.push(() => { ({ LANE_OFF, nearestD, laneLen, pileSummary, pileText } = __X["src/horde.js"]); });
 let chooseTargets, setGoal, judge;
 __late.push(() => { ({ chooseTargets, setGoal, judge } = __X["src/brain.js"]); });
 let postMax;
@@ -3774,6 +3863,7 @@ const { actNo } = __X["src/roster.js"];
 // 총공세: 적은 여섯 웨이브 동안 둘레를 돌며 쌓이기만 한다(초소를 때리지 않는다). 때가 되면 쌓인 놈들이 한꺼번에 덮친다.
 // 쉬는 동안 놈들은 사다리와 폭약을 준비한다(prep). 많이 살려 두면 그만큼 세게 온다.
 // muster(멈춰 서서 함성) → go(사방에서 초소로 쏟아진다) → 다 잡으면 격퇴 · 초소가 무너지거나 시간이 다 되면 살아남은 놈들이 철책을 넘는다(기지 방어전) → 물러간다
+
 
 
 
@@ -3812,11 +3902,18 @@ const due = (w) => w.fresh && !w.push && !w.raid && !w.waveRush && !w.noRaids &&
 
 function start(w) {
   const ts = chooseTargets(w, Math.min(6, 3 + Math.floor((w.waveNo || 0) / 24)));
-  for (const u of w.horde) { u.act = null; u.push = !u.flee; }
+  if (!w.horde.some((u) => !u.flee)) { // 철책 밖에 남은 적이 없다: 총공세가 오지 않는다 (빈 총공세 알림을 띄우지 않게)
+    (w.pushLog ??= []).push([w.waveNo, 0, 0]); w.raidWaveNo = w.waveNo || 0; w.waveAt = Math.max(w.waveAt ?? 0, nextSlot(w.t + 60, 720 * gapK(w)));
+    w.waveSignal = { kind: 'clear', no: w.waveNo, at: w.t, n: 0 };
+    w.addLog('철책 밖에 남은 적이 없어 이번 총공세는 오지 않습니다. 이 구간을 깨끗이 막았습니다.', 'wave');
+    return;
+  }
+  for (const u of w.horde) { u.act = null; u.push = !u.flee; u.stay = false; } // 숲에 숨어 있던 무리도 이제 드러난다
   const n0 = w.horde.filter((u) => u.push).length;
   w.push = { no: w.waveNo, phase: 'muster', at: w.t, goAt: w.t + MUSTER, until: 0, targets: ts, n0, left: n0 };
-  w.waveAt = w.t + MUSTER + PUSH_LEN + 200;
+  w.waveAt = Math.max(w.waveAt ?? 0, nextSlot(w.t + MUSTER + PUSH_LEN + 60, 720 * gapK(w))); // 총공세 뒤 첫 정해진 칸 (보스 웨이브 뒤 한 칸을 쉰다)
   w.waveSignal = { kind: 'allout', n: n0, posts: ts, at: w.t };
+  { const S = pileSummary(w); if (S.rounds.length) w.addLog(`총공세 내역: 숲에 남은 몫 ${S.stay} · 놓친 적 ${S.missed} (${pileText(S, 6)})${S.old ? ` · 처음부터 돌던 무리 ${S.old}` : ''}.`, 'wave'); }
   w.addLog(`총공세! 그동안 쌓인 적 ${n0}명이 ${ts.length ? `${ts.join('·')}초소로` : '철책으로'} 한꺼번에 덮칩니다.`, 'warn');
 }
 function go(w) {
@@ -3847,7 +3944,7 @@ function over(w) { // 물러간다: 바깥 숲으로 흩어져 사라진다
   for (const u of w.horde) { u.lane = null; u.push = false; u.act = null; u.role = null; u.flee = true; }
   const no = w.push.no, r = w.push.phase === 'in' ? w.push.left / Math.max(1, w.push.n0) : 0;
   judge(w, r, r > 0 && w.lastRaid && !w.lastRaid.won);
-  w.push = null; w.prep = 0; w.raidWaveNo = w.waveNo || 0; w.waveAt = w.t + 150;
+  w.push = null; w.prep = 0; w.raidWaveNo = w.waveNo || 0; w.waveAt = Math.max(w.waveAt ?? 0, w.t + 150); // 정해진 칸을 지키되 끝나고 150분은 쉰다
   // 카드 세 장 고르기는 없앴다: 강화는 무기·장비 창에서 언제든 산다
 }
 // winAtFence: 철책 앞에서 끝낸 승리 처리 (defense.js)
@@ -3911,7 +4008,14 @@ const COUNTERS = {
   mg:     { name: '방탄판 장착', why: '기관총', note: '기관총이 덜 박힙니다 — 저격·박격포를 섞으십시오' },
   sniper: { name: '지그재그 기동', why: '저격', note: '저격이 덜 맞습니다 — 기관총·박격포를 섞으십시오' },
   mortar: { name: '넓게 산개', why: '박격포', note: '한 발에 덜 잡힙니다 — 기관총을 섞으십시오' },
+  aa:     { name: '저공 침투', why: '대공', note: '대공포가 덜 박힙니다 — 기관총·저격을 섞으십시오' },
 };
+// 적 대응의 세기: 한 무기가 준 피해 몫이 35%를 넘으면 오르기 시작해 80%면 최대 (그 무기 피해·명중 절반까지)
+// 한 가지만 키워도 되지만, 쏠릴수록 적이 맞춰 온다 (막지는 않는다: 고르는 건 플레이어)
+const COUNTER_FROM = 0.35;
+const COUNTER_FULL = 0.8;
+const COUNTER_MAX = 0.5;
+const counterCut = (share) => COUNTER_MAX * Math.max(0, Math.min(1, (share - COUNTER_FROM) / (COUNTER_FULL - COUNTER_FROM)));
 const brainOf = (w) => (w.brain ??= { dmg: {}, counter: null, wound: 0 });
 
 // 적 전력: 주차 공식 하나 (formula.js). 잘 막는다고 더 세지거나 밀린다고 약해지지 않는다
@@ -3932,7 +4036,9 @@ function noteHit(w, p, d) {
 function learn(w, no) {
   const b = brainOf(w), sum = Object.values(b.dmg).reduce((a, v) => a + v, 0);
   const top = Object.entries(b.dmg).sort((x, y) => y[1] - x[1])[0];
-  b.counter = no >= 8 && sum > 20 && top && COUNTERS[top[0]] && top[1] / sum > 0.5 ? top[0] : null;
+  const cut = top ? counterCut(top[1] / Math.max(1, sum)) * Math.min(1, Math.ceil(no / 6) / 5) : 0; // 초반(초소가 몇 없어 쏠릴 수밖에 없을 때)은 약하게: 5구간부터 최대
+  b.counter = no >= 8 && sum > 20 && top && COUNTERS[top[0]] && cut > 0 ? top[0] : null;
+  b.counterK = b.counter ? Math.round(cut * 100) / 100 : 0; b.counterShare = top ? Math.round(top[1] / Math.max(1, sum) * 100) : 0;
   for (const k of Object.keys(b.dmg)) b.dmg[k] *= 0.6;
   for (const p of w.posts || []) p.hot = (p.hot || 0) * 0.6;
   return b.counter;
@@ -4087,10 +4193,10 @@ function stepBrain(w, dm) {
 // 맞을 때: 방패·지휘관·학습한 대형이 덜어 준다 (splash = 폭발)
 function guardDamage(w, p, o, d, splash) {
   if (!o.lane) return d;
-  const ty = p.tur?.type, c = w.waveRush?.no === o.lane.wave ? w.waveRush.counter : null;
+  const R = w.waveRush?.no === o.lane.wave ? w.waveRush : null, c = R?.counter, ck = R?.counterK ?? 0.25, ty = p.tur?.type;
   if (!splash && ty !== 'sniper' && (w.shieldU || []).some((s) => s.hp > 0 && Math.hypot(s.x - o.x, s.y - o.y) < 2)) { d *= 0.5; o.blockAt = w.t; }
-  if (c === 'mg' && ty === 'mg' && !splash) d *= 0.75;
-  if (c === 'mortar' && splash) d *= 0.8;
+  if (c && c === ty && c !== 'sniper') d *= 1 - ck; // 기관총(방탄판)·박격포(산개)·대공(저공): 그 무기 피해가 쏠린 만큼 준다 · 저격은 명중으로 (turret.js)
+  if (c === 'sniper' && ty === 'sniper' && splash) d *= 1 - ck; // 미사일 폭발도
   if (o.role !== 'officer' && (w.officerU || []).some((s) => s.hp > 0 && Math.hypot(s.x - o.x, s.y - o.y) < 5)) d *= 0.8;
   if ((o.panicUntil || 0) > w.t) d *= 1.3;
   return d;
@@ -4102,7 +4208,7 @@ function officerDown(w, o) {
   w.addLog('적 지휘관을 쓰러뜨렸습니다! 웨이브가 우왕좌왕합니다.', 'event', [Math.floor(o.x), Math.floor(o.y)]);
 }
 
-return { ROLES, COUNTERS, baseThreat, threatK, judge, noteHit, learn, assignRoles, firstRoles, prongs, sideOf, chooseTargets, setGoal, survive, ASSAULT, stepLaneUnit, stepBrain, guardDamage, officerDown };
+return { ROLES, COUNTERS, COUNTER_FROM, COUNTER_FULL, COUNTER_MAX, counterCut, baseThreat, threatK, judge, noteHit, learn, assignRoles, firstRoles, prongs, sideOf, chooseTargets, setGoal, survive, ASSAULT, stepLaneUnit, stepBrain, guardDamage, officerDown };
 })();
 // ===== src/foeact.js =====
 __X["src/foeact.js"] = (function () {
@@ -4295,10 +4401,13 @@ const AIR = new Set(Object.keys(ROSTER_KINDS).filter((k) => ROSTER_KINDS[k].air)
 // 적 지대에서 잡으면 사단 포상금 (만 원). 멧돼지는 실제로도 포획 포상금이 나온다
 const BOUNTY = Object.fromEntries(Object.entries(ROSTER_KINDS).map(([k, v]) => [k, v.pay]));
 // 잡을 때마다 들어오는 돈 (만 원). 선봉은 한두 푼, 웨이브는 종류만큼, 등급이 오를수록 조금 더
+const MOB_PAY_EVERY = 1;
+// 저격·대전차 미사일은 장갑·보스·정예용: 맨몸 보병에는 절반만 (기관총이 장갑에 절반인 것과 맞대칭). 저격만 깔아도 모든 웨이브가 쓸려 나갔다
+const SNIPER_SOFT = 0.5;
 function killPay(o) {
   if (o.boss) return o.pay || 300;
   const t = 1 + (o.tier || 0) * 0.05;
-  if (o.mob) return Math.max(1, Math.round((BOUNTY[o.kind] || 8) / 12 * t));
+  if (o.mob) return Math.max(1, Math.round((BOUNTY[o.kind] || 8) / 6 * t)); // 선봉이 넷에 하나꼴로 줄어든 만큼 한 명 값을 올려 수입은 그대로 (MOB_PAY_EVERY와 함께)
   if (o.bonus) return Math.max(1, Math.round((BOUNTY[o.kind] ?? 4) * 0.4 * (o.elite ? 2 : 1) * t * 1.6)); // 당긴 웨이브
   return Math.max(1, Math.round((BOUNTY[o.kind] ?? 4) * 0.4 * (o.elite ? 2 : 1) * t));
 }
@@ -4313,7 +4422,7 @@ function earn(w, x, y, pay, big = false) {
 }
 const SHELL = 3; // 박격포탄이 날아가는 시간 (게임 분)
 // 3단계부터 특수탄(유탄·미사일): every발마다 n발. 단계마다 더 자주·더 세게·더 넓게
-const SP = { mg: { kind: 'nade', every: 4, splash: 1.1, dmg: 1, fly: 2.5 }, sniper: { kind: 'missile', every: 3, splash: 1.2, dmg: 4, fly: 4 }, aa: { kind: 'sam', every: 4, splash: 1.4, dmg: 3, fly: 4, air: true } };
+const SP = { mg: { kind: 'nade', every: 4, splash: 1.1, dmg: 1, fly: 2.5 }, sniper: { kind: 'missile', every: 3, splash: 0.8, dmg: 4, fly: 4 }, aa: { kind: 'sam', every: 4, splash: 1.4, dmg: 3, fly: 4, air: true } };
 function specialOf(type, lv) {
   const S = SP[type]; if (!S || lv < 3) return null;
   const k = lv - 3;
@@ -4526,7 +4635,7 @@ function stepTurrets(w, dm) {
   w.tBooms = (w.tBooms || []).filter((b) => w.t - b.at < 30);
   w.tCorpses = (w.tCorpses || []).filter((c) => w.t - c.at < 240);
   const raidFoes = r ? w.enemies.filter((e) => e.state !== 'down' && !e.gone) : [];
-  const hordeT = r ? (w.mob || []) : [...(w.horde || []).filter((u) => !u.lane?.keep || u.id === w.focusId || h(u.id, Math.floor(w.t / 15)) < (globalThis.__expose ?? EXPOSE)), ...(w.mob || [])]; // 교전 중엔 넘어온 적과 선봉, 평소엔 철책 밖 무리까지 · 쌓인 무리(바깥 줄)는 집중 사격·포격으로만 줄인다 (그래야 쌓여서 총공세가 무섭다)
+  const hordeT = r ? (w.mob || []) : [...(w.horde || []).filter((u) => u.id === w.focusId || (u.stay ? false : !u.lane?.keep || h(u.id, Math.floor(w.t / 15)) < (globalThis.__expose ?? EXPOSE))), ...(w.mob || [])]; // 교전 중엔 넘어온 적과 선봉, 평소엔 철책 밖 무리까지 · 쌓인 무리(바깥 줄)는 집중 사격·포격으로만 줄인다 (그래야 쌓여서 총공세가 무섭다)
   // 날아가던 박격포탄이 떨어진다
   w.tShells = (w.tShells || []).filter((sh) => {
     if (w.t < sh.hitAt) return true;
@@ -4534,7 +4643,7 @@ function stepTurrets(w, dm) {
     const splash = (sh.splash || T.splash[0]) * (1 + pk(w, 'blast')), dmg = sh.dmg || T.dmg[0];
     for (const u of w.mob || []) if (Math.hypot(u.x - sh.x, u.y - sh.y) < splash + 2) u.scat = w.t + 8; // 포탄이 떨어지면 흩어진다
     w.tBooms.push({ x: sh.x, y: sh.y, at: w.t, id: ++w.thoughtSeq, big: !sh.kind || ['missile', 'k9', 'chunmoo', 'shell120'].includes(sh.kind), lv: sh.lv || 1, kind: sh.kind || (sh.strike ? 'strike' : 'mortar'), air: sh.up, fire: sh.fire });
-    const blast = (pool, raid) => { for (const o of pool.slice()) { const d = Math.hypot(o.x - sh.x, o.y - sh.y); if (d < splash && (sh.air || !(raid ? o.air : AIR.has(o.kind)))) damage(w, p, o, raid, d < 0.6 ? dmg : Math.max(1, dmg - 1)); } };
+    const blast = (pool, raid) => { for (const o of pool.slice()) { if (o.stay && !sh.strike) continue; /* 숲에 남은 무리(설계표의 몫)는 초소가 못 쏜다: 포격 요청·집중 사격으로만 줄인다 */ const d = Math.hypot(o.x - sh.x, o.y - sh.y); if (d < splash && (sh.air || !(raid ? o.air : AIR.has(o.kind)))) damage(w, p, o, raid, (d < 0.6 ? dmg : Math.max(1, dmg - 1))); } };
     splashing = true;
     if (r) blast(raidFoes, true); else blast(w.horde || [], false);
     blast(w.mob || [], false);
@@ -4637,7 +4746,7 @@ function stepTurrets(w, dm) {
     tu.cd = T.gap[i] * sup.gap;
     tu.ax = best.x; tu.ay = best.y; tu.firedAt = w.t;
     const air = isRaid ? !!best.air : AIR.has(best.kind);
-    const p0 = Math.min(0.97, T.acc[i] * k * sup.acc * (air ? T.air : (T.ground || 1)) * (tu.type === 'sniper' && best.lane && w.waveRush?.counter === 'sniper' ? 0.75 : 1));
+    const p0 = Math.min(0.97, T.acc[i] * k * sup.acc * (air ? T.air : (T.ground || 1)) * (tu.type === 'sniper' && best.lane && w.waveRush?.counter === 'sniper' ? 1 - (w.waveRush.counterK ?? 0.25) : 1));
     const roll = h(w.t * 7.13 + p.id, best.id || 1);
     const hit = roll < p0;
     if (r && isRaid && !r.reported && !r.spottedBy) { r.spottedBy = p.id; r.spottedAt = w.t; r.autoAt = w.t + 2; }
@@ -4681,6 +4790,7 @@ function damage(w, p, o, isRaid, d) {
   if (!isRaid) { d = trickDamage(w, o, guardDamage(w, p, o, d, splashing), splashing); if (!d) return; noteHit(w, p, Math.min(d, o.hp ?? d)); }
   // 장갑 적: 기관총·발칸은 절반만 박힌다 (저격·박격포는 그대로)
   if ((p.tur?.type === 'mg' || p.tur?.type === 'aa') && ar) d *= 0.5;
+  if (p.tur?.type === 'sniper' && !ar && !o.boss && !o.elite) d *= SNIPER_SOFT; // 저격·미사일은 맨몸 보병에 절반
   if (FOES[o.kind]?.air && w.has) d *= 1 + (w.has('drone') ? 0.25 : 0) + (w.has('aa') ? 0.25 : 0);
   if (o.hp - d <= 0 && !isRaid) { (w.kindKills ??= {})[o.kind] = (w.kindKills[o.kind] || 0) + 1; }
   o.hitD = d; if (o.hp - d <= 0) { o.hitKill = true; addMerit(w, o.x, o.y); }
@@ -4691,7 +4801,7 @@ function damage(w, p, o, isRaid, d) {
   if (o.mob) { // 선봉: 쓰러지면 그만 (포상금·경험 없음). 대신 격파 수가 오른다
     o.hp -= d;
     if (o.hp > 0) return;
-    w.mob = w.mob.filter((u) => u !== o); w.mobKills = (w.mobKills || 0) + 1; earn(w, o.x, o.y, killPay(o));
+    w.mob = w.mob.filter((u) => u !== o); w.mobKills = (w.mobKills || 0) + 1; if (w.mobKills % MOB_PAY_EVERY === 0) earn(w, o.x, o.y, killPay(o)); // 선봉 수입: 끝없이 나오는 선봉 수입이 웨이브 보상을 덮었다 (52일 처치 수입의 대부분)
     (w.tCorpses ??= []).push({ id: o.id, x: o.x, y: o.y, kind: o.kind, at: w.t, dir: o.dir || 1, mob: true });
     if (w.tCorpses.length > 90) w.tCorpses.splice(0, w.tCorpses.length - 90);
     return;
@@ -4718,7 +4828,7 @@ function damage(w, p, o, isRaid, d) {
   }
 }
 
-return { MAX_LV, needCmd, TUR_WEEK, turWeek, turMaxNow, upReq, TURRETS, BOUNTY, killPay, earn, specialOf, STRIKE_MAX, STRIKE_REGEN, cmdLv, strikeMax, BUNKER, callStrike, strikePrice, BUY_GAP, buyStrikeWhy, buyStrike, focusAt, pickCrate, AUTO_K, MODS, modLv, buyMod, postMax, postHp, postRepairCost, repairPost, hurtPost, turretUpkeep, turretCost, buildTurret, upgradeTurret, crewK, postSupport, stepTurrets, hitOutside };
+return { MAX_LV, needCmd, TUR_WEEK, turWeek, turMaxNow, upReq, TURRETS, BOUNTY, MOB_PAY_EVERY, SNIPER_SOFT, killPay, earn, specialOf, STRIKE_MAX, STRIKE_REGEN, cmdLv, strikeMax, BUNKER, callStrike, strikePrice, BUY_GAP, buyStrikeWhy, buyStrike, focusAt, pickCrate, AUTO_K, MODS, modLv, buyMod, postMax, postHp, postRepairCost, repairPost, hurtPost, turretUpkeep, turretCost, buildTurret, upgradeTurret, crewK, postSupport, stepTurrets, hitOutside };
 })();
 // ===== src/horde.js =====
 __X["src/horde.js"] = (function () {
@@ -4733,10 +4843,12 @@ const { leadOf, clsOf, LEADS, ROSTER_KINDS, ACTS, ACT_SUB, actNo, gruntOf, MOB_K
 const { stepAct } = __X["src/foeact.js"];
 const { threatK, ROLES, assignRoles, learn, firstRoles, prongs, stepLaneUnit, sideOf } = __X["src/brain.js"];
 const { PUSH_EVERY, stepPush, charging } = __X["src/push.js"];
+const { roundPlan, nextSlot, BLOCKS, FINAL_NO, FINAL_JOIN, NEED } = __X["src/rounds.js"];
 // 철책 밖 적 지대 (유즈맵처럼): 시간의 틈에서 나온 역대 침략군이 2년 내내 부대 둘레를 돈다. 무엇이 오는지 미리 보인다.
 // 돌파가 가까워지면 한쪽 철책 앞에 모여들고, 때가 되면 그 무리가 그대로 넘어와 침투 전투(defense.js)가 된다.
 // 종류: 보병(기본) · 공성조(진지를 노린다) · 오랑우탄(빠르고 철책을 타 넘는다) · 맹금류(하늘로 바로 넘어온다) · 티라노(몇 달에 한 번, 보스)
 // 겉모습·편성용이라 부대 난수를 쓰지 않는다 (고정 해시). 새 판(fresh)에서만 켠다: 규칙 시험의 침투는 그대로다.
+
 
 
 
@@ -4789,7 +4901,7 @@ const BOSSES = [
 ];
 const FINAL_BOSS = { kind: 'voidg', name: '시간의 틈을 연 자', mult: 12, pay: 4000 }; // 임기 마지막 두 주의 대장
 function bossFor(w, no) { // no = 몇 번째 총공세
-  if (w.fresh && w.termWeeks && w.week % w.termWeeks >= w.termWeeks - 2) return FINAL_BOSS;
+  if (w.fresh && (no === BLOCKS || (w.termWeeks && w.week % w.termWeeks >= w.termWeeks - 2))) return FINAL_BOSS; // 15구간(90라운드) 보스 · 임기 마지막 이틀
   const i = no - 1, back = Math.floor(i / BOSSES.length), B = BOSSES[i % BOSSES.length];
   return back ? { ...B, name: `되돌아온 ${B.name}`, mult: B.mult * (1 + back * 0.4), pay: B.pay + back * 800 } : B;
 }
@@ -4824,21 +4936,55 @@ function wanted(w) {
 }
 
 // 다음 웨이브 짜기: 크기·종류·정예 수·보스 (화면 위 웨이브 막대에 미리 보인다)
+// 그 시대(구간 셋마다 한 시대) 적 가운데 이 칸 성격(정면·속도·장갑·물량·공중·정예)에 맞는 것을 돌아가며 고른다
+const eraOf = (b) => (b <= BLOCKS ? Math.min(ACTS.length - 1, Math.floor((b - 1) / 3)) : (b - 1) % ACTS.length);
+function pickKind(b, cls, turn = 0) {
+  const e = eraOf(b), era = LEADS.slice(e * 13, e * 13 + 13), pool = era.filter((k) => clsOf(k) === cls);
+  const list = pool.length ? pool : era.filter((k) => clsOf(k) === 'line');
+  return list[((b - 1) % 3 + turn + Math.floor((b - 1) / BLOCKS)) % list.length];
+}
 function planWave(w, no) {
-  const L = leadOf(no), theme = clsOf(L.kind), T = THEMES[theme], list = [];
-  // 주인공 열에 예닐곱, 거드는 부대 하나(앞서 나온 것 가운데), 나머지는 보병
-  const back = 2 + Math.floor(h(no, 81) * Math.min(Math.max(1, no - 3), LEADS.length - 4)), side = airSide(w, no, FOES) || (no > 3 ? leadOf(no - back).kind : gruntOf(no)); // 말뚝박은인생: 짝수 웨이브는 비행대가 거든다
-  for (let i = 0; i < Math.round(waveSize(w) * T.n * Math.min(1, 0.6 + 0.4 * threatK(w)) * (1 + pk(w, 'foeN'))); i++) {
-    const q = h(no * 13 + i, 71), kind = q < 0.65 ? L.kind : q < 0.85 ? side : gruntOf(no);
+  const P = roundPlan(no), theme = P.slot === 'boss' ? 'elite' : P.slot, T = THEMES[theme], list = [];
+  const lead = pickKind(P.block, theme), side = airSide(w, no, FOES) || pickKind(P.block, 'line', 1), grunt = gruntOf(no), again = P.block > BLOCKS ? '되돌아온 ' : '';
+  // 주인공 65% · 그 시대 보병 대열 20% · 흔한 보병 나머지 (정해진 몫이라 몇 명인지 미리 정확히 보인다. 공중 웨이브는 하늘 적과 땅 적이 섞인다)
+  const N = Math.round(P.total * (1 + pk(w, 'foeN'))), nLead = Math.max(1, Math.round(N * 0.65)), nSide = Math.round(N * 0.2);
+  for (let i = 0; i < N; i++) {
+    const kind = i < nLead ? lead : i < nLead + nSide ? side : grunt;
     list.push({ kind, elite: h(no * 7 + i, 29) < eliteChance(w) + T.el });
   }
-  const mean = list.reduce((a, u) => a + (HORDE_HP[u.kind] || 1) * (ARMORED.has(u.kind) ? 1.3 : 1), 0) / Math.max(1, list.length), k = Math.max(0.5, Math.min(1.7, (2 / mean) ** 0.85)) * (1 + 0.9 * Math.floor((no - 1) / LEADS.length)); // 되돌아온 군대는 더 질기다
-  // 질긴 부대는 한 놈 한 놈을 조금 약하게: 어느 부대가 와도 웨이브 전체의 세기는 비슷하다
   assignRoles(no, list);
-  const boss = no % PUSH_EVERY === 0 && w.lastBossNo !== no ? bossFor(w, no / PUSH_EVERY) : null; // 여섯 번째 웨이브마다 보스: 그대로 총공세를 이끈다
+  const boss = P.slot === 'boss' && w.lastBossNo !== no ? bossFor(w, P.block) : null; // 구간마다 여섯째 웨이브에 보스: 그대로 총공세를 이끈다
   if (boss) w.lastBossNo = no;
   const fresh = [...new Set(list.map((u) => u.kind))].filter((k) => !(w.seenFoes || []).includes(k)); // 처음 보는 적
-  return { no, list, k, boss, theme, lead: L.kind, name: L.prefix + FOES[L.kind].name, tier: tierOf(no, w), fresh, roles: firstRoles(no), prongs: prongs(no), counter: learn(w, no), corner: gateOf(w) }; // 어느 모서리에서 출발할지 미리 보인다
+  return { no, list, k: 1, boss, theme, lead, name: again + FOES[lead].name, tier: tierOf(no, w), fresh, roles: firstRoles(no), prongs: prongs(no), counter: learn(w, no), counterK: w.brain?.counterK || 0, counterShare: w.brain?.counterShare || 0, corner: gateOf(w),
+    block: P.block, slot: P.slot, n: P.n, unitHp: P.unitHp, hp: P.hp, bossHp: P.bossHp, need: P.need, joinFinal: P.joinFinal, final: P.final }; // 어느 모서리에서 출발할지·몇 명·체력 합이 미리 보인다
+}
+// 철책 밖에 쌓인 무리 내역: 다음 총공세에 올 적 = 숲에 남은 몫(설계) + 두 바퀴를 버틴 놈(놓친 적) + 처음부터 돌던 무리
+// 라운드별로 묶어 '어디서 흘렸나'를 보인다 (적 정보·총공세 알림)
+function pileSummary(w) {
+  const us = (w.horde || []).filter((u) => !u.flee && (!u.lane || u.lane.keep || u.push));
+  const out = { total: us.length, stay: 0, missed: 0, old: 0, hp: 0, rounds: [] }, by = new Map();
+  for (const u of us) {
+    out.hp += u.hp || 0;
+    const k = u.stay ? 'stay' : u.from ? 'missed' : 'old'; out[k]++;
+    if (k !== 'missed') continue;
+    const r = by.get(u.from) || { no: u.from, slot: roundPlan(u.from).slot, n: 0, kinds: {} }; r.n++;
+    const nm = FOES[u.kind]?.name || u.kind; r.kinds[nm] = (r.kinds[nm] || 0) + 1 + (u.boss ? 0 : 0); if (u.boss) r.boss = u.boss;
+    by.set(u.from, r);
+  }
+  out.rounds = [...by.values()].sort((a, b) => a.no - b.no); out.hp = Math.round(out.hp);
+  return out;
+}
+const SLOT_KO = { line: '정면', rush: '속도', armor: '장갑', swarm: '물량', air: '공중', boss: '보스' };
+const pileText = (S, max = 4) => S.rounds.slice(-max).map((r) => `제${r.no} ${SLOT_KO[r.slot]} ${r.n}명${r.boss ? `(보스 ${r.boss})` : ''}`).join(' · ') + (S.rounds.length > max ? ` 외 ${S.rounds.length - max}라운드` : '');
+
+// 설계표 체력: 한 명 평균이 unitHp가 되게 (종류·정예·병과만큼 서로 다르게), 보스는 표의 값 그대로
+function tableHp(w, us, plan) {
+  const K = (1 + pk(w, 'foeHp')) * (globalThis.__roundK ?? 1), wt =(u) => (HORDE_HP[u.kind] || 1) * (u.elite ? 2 : 1) * (ROLES[u.role]?.hp || 1);
+  const ns = us.filter((u) => !u.boss), mean = ns.reduce((a, u) => a + wt(u), 0) / Math.max(1, ns.length);
+  for (const u of ns) u.hp = Math.max(0.2, Math.round(plan.unitHp * wt(u) / mean * K * 10) / 10);
+  for (const u of us) if (u.boss) u.hp = Math.max(1, Math.round(plan.bossHp * K * 10) / 10);
+  for (const u of us) u.maxHp = u.hp;
 }
 
 // 웨이브 돌격: 새 웨이브는 한 초소 앞 철책 밖 멀리서 줄지어 나타나 한꺼번에 달려든다.
@@ -4879,20 +5025,21 @@ function weakestPost(w) {
 function sideOut(w, p) { return p.y <= 3 ? [0, -1] : p.x >= w.W - 3 ? [1, 0] : p.y >= w.H - 3 ? [0, 1] : [-1, 0]; }
 function startLane(w, no, units, plan = {}) {
   const T = THEMES[plan.theme] || THEMES.line, tier = plan.tier || 0;
-  for (const u of units) { u.tier = tier; u.hp *= T.hp * (u.boss ? 1 : plan.k || 1) * (1 + tier * 0.12) * (u.boss ? 1 + no / 80 : 1) * (ROLES[u.role]?.hp || 1); }
-  // 뒤에 남는 무리: 초소가 잘 안 닿는 바깥 숲에 쌓였다가 총공세 때 한꺼번에 나온다 (저격·박격포·포격은 닿는다)
-  const back = w.tut != null && !w.tutDone ? 0 : Math.max(0.45, 0.75 - no * 0.003), full = w.horde.length > 80;
-  const stay = units.filter((u, i) => !u.boss && !full && h(no * 3 + i, 101) < back), all = units;
+  for (const u of units) { u.tier = tier; u.from = no; } // 몇 라운드에서 온 적인가 (총공세 내역에 보인다)
+  // 뒤에 남는 무리: 설계표의 몫(앞의 n명이 돌고 나머지)만큼 바깥 숲에 쌓였다가 총공세 때 한꺼번에 나온다 (저격·박격포·포격은 닿는다)
+  const full = w.horde.length > 80, tut = w.tut != null && !w.tutDone, lap = plan.n ?? units.length;
+  const stay = tut || full ? [] : units.filter((u) => !u.boss).slice(lap), all = units;
   units = units.filter((u) => !stay.includes(u)); if (!units.length) units = [stay.pop()];
-  for (const u of all) { u.hp = Math.max(0.2, Math.round(u.hp * laneHp(w) * 10) / 10); u.maxHp = u.hp; }
-  const corner = gateOf(w), d0 = cornerD(w, corner), n = units.length, gap = LANE_GAP * (plan.counter === 'mortar' ? 1.8 : 1);
+  if (plan.unitHp != null) tableHp(w, all, plan);
+  else for (const u of all) { u.hp = Math.max(0.2, Math.round(u.hp * T.hp * (1 + tier * 0.12) * (ROLES[u.role]?.hp || 1) * laneHp(w) * 10) / 10); u.maxHp = u.hp; } // 옛 저장의 계획
+  const corner = gateOf(w), d0 = cornerD(w, corner), n = units.length, gap = LANE_GAP * (plan.counter === 'mortar' ? 1 + 1.6 * (plan.counterK ?? 0.5) : 1); // 박격포에 맞춰 넓게 벌린다
   units.forEach((u, i) => { const d = d0 - i * gap; u.lane = { wave: no, d, start: d, rev: false }; [u.x, u.y] = loopPos(w, d, LANE_OFF); u.rush = null; }); // 갈래가 늘어도 돌 때는 모두 한 방향 한 줄 (거꾸로 도는 무리가 없게)
   stay.forEach((u) => { u.off = 3.2 + h(u.id, 9) * 2.6; u.stay = true; u.d = cornerD(w, corner) + (h(u.id, 3) - 0.5) * 10; [u.x, u.y] = loopPos(w, u.d, u.off); }); // 남는 무리도 출입구 앞에
   const ground = units.filter((u) => !FOES[u.kind].air && !u.boss); // 보스는 대열 걸음에서 뺀다 (따로 천천히 따라온다)
   const march = (ground.length ? Math.min(...ground.map((u) => FOES[u.kind].speed)) : 1) * T.sp;
   const stage = w.tut != null && !w.tutDone ? 10 : LANE_STAGE;
-  w.waveRush = { no, lane: true, corner, total: n, back: stay.length, leaked: 0, leakers: [], at: w.t, phase: 'stage', goAt: w.t + stage, march, post: null, theme: plan.theme, name: plan.name, lead: plan.lead, tier, counter: plan.counter || null, newRole: plan.roles?.length ? plan.roles.map((k) => `새 병과 ${ROLES[k].name}: ${ROLES[k].does}`).join(' / ') : null };
-  w.waveSignal = { kind: 'stage', no, at: w.t, ...(no === LEADS.length + 1 ? { act: '시간의 틈이 뒤섞였습니다', sub: '이제부터 여러 시대의 적이 한꺼번에 되돌아옵니다' } : no <= LEADS.length && (no === 1 || actNo(no) > actNo(no - 1)) ? { act: ACTS[actNo(no)], sub: ACT_SUB[actNo(no)] } : {}) };
+  w.waveRush = { no, lane: true, corner, total: n, back: stay.length, leaked: 0, leakers: [], at: w.t, phase: 'stage', goAt: w.t + stage, march, post: null, boss: all.find((u) => u.boss)?.boss || null, slot: plan.slot, block: plan.block, need: plan.need, theme: plan.theme, name: plan.name, lead: plan.lead, tier, counter: plan.counter || null, counterK: plan.counterK || 0, newRole: plan.roles?.length ? plan.roles.map((k) => `새 병과 ${ROLES[k].name}: ${ROLES[k].does}`).join(' / ') : null };
+  w.waveSignal = { kind: 'stage', no, at: w.t, ...(no === FINAL_NO + 1 ? { act: '시간의 틈이 뒤섞였습니다', sub: '이제부터 여러 시대의 적이 한꺼번에 되돌아옵니다' } : no <= FINAL_NO && (no === 1 || actNo(no) > actNo(no - 1)) ? { act: ACTS[actNo(no)], sub: ACT_SUB[actNo(no)] } : {}) };
   (w.seenFoes ??= []).push(...(plan.fresh || []));
   for (const k of plan.fresh || []) if (no > 1) w.addLog(`새로운 적: ${FOES[k].name} — ${FOES[k].note}`, 'wave');
   for (const k of plan.roles || []) w.addLog(`새로운 병과: ${ROLES[k].name} — ${ROLES[k].does}. ${ROLES[k].by}.`, 'warn');
@@ -4988,7 +5135,10 @@ function resolveRush(w) {
   if (r.lane && r.survived) { // 다 못 잡았다: 철책 밖 무리가 커진다 → 다음 진돗개가 커진다
     w.waveStats.leaked++;
     w.waveSignal = { kind: 'survive', no: r.no, at: w.t, n: r.survived };
-    w.addLog(`제${r.no} 웨이브: ${r.total}명 중 ${r.survived}명이 살아남아 철책 밖에 쌓였습니다.`, 'wave');
+    const need = NEED[r.slot] || NEED[r.theme === 'elite' ? 'boss' : r.theme]; r.need = need; // 무엇이 모자랐나 (설계표가 이 웨이브로 시험한 역할)
+    const kinds = {}; for (const u of w.horde) if (u.from === r.no && u.lane?.keep) { const nm = (u.boss || FOES[u.kind]?.name || u.kind) + (u.elite ? '(정예)' : ''); kinds[nm] = (kinds[nm] || 0) + 1; }
+    const who = Object.entries(kinds).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, n]) => `${k} ${n}`).join(', ');
+    w.addLog(`제${r.no} 웨이브: ${r.total}명 중 ${r.survived}명이 살아남아 철책 밖에 쌓였습니다${who ? ` (${who})` : ''}. 다음 총공세에 섞입니다.${need ? ` 모자란 것: ${need}.` : ''}`, 'wave');
     return;
   }
   if (!r.leaked) {
@@ -5045,16 +5195,16 @@ function setLeakSpawner(f) { spawnLeak = f; } // defense.js가 넘겨준다 (서
 
 // 선봉: 웨이브와 따로 네 모서리에서 끝없이 밀려든다 (총소리가 멈추지 않게). 약해서 한두 발이면 쓰러지고,
 // 포상금·경험·철책 밖 한도·진돗개에는 세지 않는다. 다 잡아도 곧바로 다음 줄이 나온다
-const mobWanted = (w) => Math.min(150, 44 + Math.floor(Math.min(sw(w), 30) * 2 + Math.max(0, sw(w) - 30) * 0.6)); // 첫 주 44 → 반년 100 → 2년 148
+const mobWanted = (w) => Math.min(60, 16 + Math.floor(sw(w) * 0.42)); // 16 → 2년 60 (예전 44 → 150: 출입구 쪽에 늘 수십 명이 맴돌아 정신없었다)
 function stepMob(w, dm) {
   w.mob ??= [];
   if (w.tut != null && !w.tutDone) { w.mob = []; return; } // 튜토리얼 중에는 조용히
   const L = laneLen(w), cx = w.W / 2, cy = w.H / 2;
   if (w.mob.length < mobWanted(w) && w.t >= (w.mobAt ?? 0)) {
-    w.mobAt = w.t + 5; // 5분마다 한 줄
+    w.mobAt = w.t + 12; // 12분마다 한 줄 (예전 5분: 총소리·폭발이 쉬지 않았다)
     const no = (w.mobNo = (w.mobNo || 0) + 1);
     const ok = MOB_KINDS[actNo(Math.max(1, w.waveNo || 1))];
-    const wl = w.waveRush?.lead || w.nextWave?.lead, kind = wl && h(no, 57) < 0.5 ? wl : ok[Math.floor(h(no, 51) * ok.length)], d0 = cornerD(w, gateOf(w)) + (h(no, 53) - 0.5) * 6, n = 7 + Math.floor(sw(w) / 12);
+    const wl = w.waveRush?.lead || w.nextWave?.lead, kind = wl && h(no, 57) < 0.5 ? wl : ok[Math.floor(h(no, 51) * ok.length)], d0 = cornerD(w, gateOf(w)) + (h(no, 53) - 0.5) * 6, n = 4 + Math.floor(sw(w) / 20);
     for (let i = 0; i < n; i++) {
       const id = -(w.mobSeq = (w.mobSeq || 0) + 1), hp = Math.round(FORMULA.mobHp(sw(w)) * 10) / 10, tier = tierOf(w.waveNo || 0, w);
       w.mob.push({ id, mob: true, tier, kind, x: 0, y: 0, d: d0 - i * 0.7, go: 0, in: 7, wob: (h(id, 5) - 0.3) * 2.6, hp, maxHp: hp, dir: 1, phase: 0, moving: true });
@@ -5089,7 +5239,7 @@ function stepMob(w, dm) {
 function stepHorde(w, dm) {
   if (!w.fresh || w.awaitingUnit) return;
   w.horde ??= []; w.mob ??= [];
-  if (w.horde.some((u) => !FOES[u.kind]) || (w.nextWave && !FOES[w.nextWave.lead])) { w.horde = w.horde.filter((u) => FOES[u.kind]); w.mob = w.mob.filter((u) => FOES[u.kind]); w.waveRush = null; w.nextWave = planWave(w, (w.waveNo || 0) + 1); } // 옛 저장의 없어진 적
+  if (w.horde.some((u) => !FOES[u.kind]) || (w.nextWave && (!FOES[w.nextWave.lead] || w.nextWave.unitHp == null))) { w.horde = w.horde.filter((u) => FOES[u.kind]); w.mob = w.mob.filter((u) => FOES[u.kind]); if (w.nextWave && !FOES[w.nextWave.lead]) w.waveRush = null; w.nextWave = planWave(w, (w.waveNo || 0) + 1); } // 옛 저장: 없어진 적 · 설계표 이전의 계획
   stepMob(w, dm);
   const mix = wanted(w), have = {};
   stepPush(w, winner);
@@ -5105,12 +5255,17 @@ function stepHorde(w, dm) {
     w.horde.push({ id, kind, d: h(id, 3) * 400, off: 2.5 + h(id, 7) * 4, phase: 0, x: 0, y: 0, dir: 1, hp: Math.round(hp * 10) / 10, maxHp: Math.round(hp * 10) / 10, week: w.week,
       ...(opt.role ? { role: opt.role } : {}), ...(opt.elite ? { elite: true } : {}), ...(opt.boss ? { boss: opt.boss.name, pay: opt.boss.pay } : {}) });
   };
-  if (!w.hordeFilled) { for (const [kind, n] of Object.entries(mix)) for (let i = have[kind] || 0; i < n; i++) spawn(kind); w.waveAt = w.t + 120; w.waveNo = 0; w.nextWave = planWave(w, 1); }
+  const G = WAVE_GAP * gapK(w);
+  if (!w.hordeFilled) { for (const [kind, n] of Object.entries(mix)) for (let i = have[kind] || 0; i < n; i++) spawn(kind); w.waveAt = nextSlot(w.t + 120, G); w.waveNo = 0; w.nextWave = planWave(w, 1); }
   else if (w.tut != null && !w.tutDone && w.t >= (w.waveAt ?? 0)) w.waveAt = w.t + 60; // 튜토리얼 중엔 정규 웨이브를 쉰다 (연습 웨이브만)
-  else if (!gathering && w.t >= (w.waveAt ?? 0) && w.waveRush) w.waveAt = w.t + 20; // 지금 웨이브가 아직 돌고 있으면 기다린다
+  else if (!gathering && w.t >= (w.waveAt ?? 0) && w.waveRush) { /* 지금 웨이브가 아직 돌고 있으면 기다린다 (정해진 시각은 그대로 둔다: 다음 칸이 밀리지 않게) */ }
   else if (!gathering && w.t >= (w.waveAt ?? 0)) {
     const plan = w.nextWave || planWave(w, (w.waveNo || 0) + 1);
-    w.waveAt = w.t + WAVE_GAP * gapK(w); w.waveNo = plan.no;
+    // 정해진 칸에서 다음 칸으로 (늦게 나와도 시각이 밀리지 않는다). 보스 웨이브 뒤 한 칸은 총공세 몫
+    w.waveAt = Math.max(nextSlot((w.waveAt ?? w.t) + G * (plan.slot === 'boss' ? 2 : 1) - 1, G), nextSlot(w.t + G / 2, G)); w.waveNo = plan.no;
+    if (plan.joinFinal) { w.finalJoinAt = w.t + FINAL_JOIN; w.addLog(`최종 국면! 이 웨이브가 도는 중에 ${FINAL_JOIN}분 뒤 최종 보스가 합류합니다. 대공·저격을 함께 준비하십시오.`, 'warn'); }
+    if (plan.no === FINAL_NO - 5) w.addLog(`최종 구간: 이번 구간의 다섯째 웨이브(공중)가 도는 중에 최종 보스가 합류합니다. 대공과 저격을 함께 키우십시오.`, 'warn');
+    if (plan.no === FINAL_NO - 2) w.addLog('예고: 다음 웨이브(공중)가 출발하고 90분 뒤 최종 보스가 합류합니다. 하늘 적과 보스가 한꺼번에 옵니다.', 'warn');
     const first = w.horde.length;
     for (const u of plan.list) spawn(u.kind, { elite: u.elite, role: u.role });
     if (plan.boss) spawn(plan.boss.kind, { boss: plan.boss });
@@ -5119,6 +5274,7 @@ function stepHorde(w, dm) {
     if (plan.boss) { w.addLog(`보스 웨이브! ${plan.boss.name}이(가) 철책 밖에 나타났습니다. 초소로 잡으면 포상금 ${plan.boss.pay.toLocaleString('ko-KR')}만 원, 못 잡으면 다음 총공세를 이끕니다.`.replace('이(가)', /[가-힣]$/.test(plan.boss.name) && (plan.boss.name.charCodeAt(plan.boss.name.length - 1) - 0xac00) % 28 ? '이' : '가'), 'warn'); }
     w.nextWave = planWave(w, plan.no + 1);
   }
+  if (w.finalJoinAt != null && w.t >= w.finalJoinAt) { w.finalJoinAt = null; if (w.waveRush?.lane && w.nextWave?.final) w.pullReq = true; } // 최종 보스 합류 (예고한 대로)
   if (w.pullReq) {
     w.pullReq = false;
     const plan = w.nextWave, rr = w.waveRush;
@@ -5127,9 +5283,12 @@ function stepHorde(w, dm) {
       if (rr?.lane) {
         const first = w.horde.length; for (const u of plan.list) spawn(u.kind, { elite: u.elite, role: u.role }); if (plan.boss) spawn(plan.boss.kind, { boss: plan.boss });
         const us = w.horde.slice(first), T = THEMES[plan.theme] || THEMES.line, d0 = cornerD(w, plan.corner);
-        us.forEach((u, i) => { u.tier = plan.tier || 0; u.hp = Math.round(u.hp * laneHp(w) * T.hp * (u.boss ? 1 : plan.k || 1) * (1 + u.tier * 0.12) * (ROLES[u.role]?.hp || 1) * 10) / 10; u.maxHp = u.hp; u.bonus = true; const d = d0 - i * LANE_GAP; u.lane = { wave: rr.no, d, start: d }; [u.x, u.y] = loopPos(w, d, LANE_OFF); });
-        rr.total += us.length; w.waveNo = plan.no; w.waveAt = w.t + WAVE_GAP * gapK(w); w.nextWave = planWave(w, plan.no + 1);
-        w.addLog(`웨이브를 당겼습니다! 제${plan.no} 웨이브 [${plan.name || T.name}] ${us.length}명이 ${CORNERS[plan.corner]}에서 합류합니다 (처치 수입 1.6배).`, 'warn');
+        tableHp(w, us, plan);
+        us.forEach((u, i) => { u.tier = plan.tier || 0; u.from = plan.no; u.bonus = true; const d = d0 - i * LANE_GAP; u.lane = { wave: rr.no, d, start: d }; [u.x, u.y] = loopPos(w, d, LANE_OFF); });
+        rr.total += us.length; w.waveNo = plan.no; w.waveAt = nextSlot(w.waveAt + G * (plan.slot === 'boss' ? 1 : 0), G); w.nextWave = planWave(w, plan.no + 1); // 당긴 웨이브가 쓴 칸은 건너뛰지 않는다: 원래 시각에 그다음 웨이브
+        if (plan.boss) rr.boss = plan.boss.name; // 웨이브 막대에 보스 이름
+        if (plan.final) w.addLog(`${plan.boss?.name || '최종 보스'}가 호위 ${us.length - 1}명과 함께 합류했습니다! 하늘 적과 한꺼번에 돕니다.`, 'warn'); // 예고한 합류 (당긴 것이 아니다)
+        else w.addLog(`웨이브를 당겼습니다! 제${plan.no} 웨이브 [${plan.name || T.name}] ${us.length}명이 ${CORNERS[plan.corner]}에서 합류합니다 (처치 수입 1.6배).`, 'warn');
       } else { w.waveAt = w.t; w.pullNext = true; }
     }
   }
@@ -5139,6 +5298,7 @@ function stepHorde(w, dm) {
   if (w.waveRush?.lane && w.waveRush.phase === 'stage' && w.t >= w.waveRush.goAt && !w.raid) { w.waveRush.phase = 'lap'; w.waveSignal = { kind: 'lap', no: w.waveRush.no, at: w.t }; }
   if (w.waveRush && !w.waveRush.lane && w.waveRush.phase === 'stage' && w.t >= w.waveRush.goAt && !w.raid) { w.waveRush.phase = 'charge'; w.waveRush.chargeAt = w.t; w.waveSignal = { kind: 'charge', no: w.waveRush.no, at: w.t }; w.addLog(`제${w.waveRush.no} 웨이브 돌격! ${w.waveRush.post}초소 앞 철책으로 달려옵니다!`, 'warn', [Math.floor(w.waveRush.fx), Math.floor(w.waveRush.fy)]); }
   if (w.waveRush) resolveRush(w);
+  { const R = w.waveRush; w.tailing = !!(R?.lane && R.phase === 'lap' && R.left != null && R.left <= Math.max(2, R.total * 0.15) && !w.horde.some((u) => u.boss && u.lane?.wave === R.no && !u.lane.keep)); } // 보스가 남았으면 끝까지 본다
   // 쌓인 적이 한계를 넘으면 여섯 웨이브를 기다리지 않고 총공세가 온다 (push.js)
   w.hordeCap = FORMULA.cap(sw(w)); // 웨이브가 줄줄이 커졌으니 한도도 (첫 주 80 → 1년 142 → 2년 205)
   // 소규모 도발: 하루 반쯤마다 2~4마리가 한 초소 앞 철책으로 달려든다 (초소가 잡으면 포상금, 닿으면 철책 훼손)
@@ -5221,7 +5381,7 @@ function stepHorde(w, dm) {
 }
 
 // 돌파: spawnRaid가 부른다. 모인 무리 중 n마리가 넘어온다 (철책 위 지점과 종류 목록)
-const GRUNTS = new Set([1, 14, 27, 40, 53].map(gruntOf));
+const GRUNTS = new Set([1, 19, 37, 55, 73].map(gruntOf)); // 시대마다 첫 웨이브 (세 구간 = 18웨이브마다 한 시대)
 function hordeBreach(w, n) {
   if (!w.fresh || !w.horde?.length) return null;
   const doors = w.push ? w.push.targets.map((id) => w.posts.find((q) => q.id === id)).filter(Boolean).sort((a, b) => !!b.broken - !!a.broken).slice(0, w.push.no < 30 ? 1 : 2) : [];
@@ -5238,7 +5398,7 @@ function hordeBreach(w, n) {
   return { bx: fx, by: fy, kinds: pick.map((u) => u.kind), units: pick, spread: !!w.push, doors };
 }
 
-return { WAVE_GAP, waveSize, hpScale, HORDE_HP, ARMORED, isArmored, eliteChance, THEMES, TIERS, tierOf, BOSSES, bossFor, FOES, nearestD, loopPos, wanted, planWave, RUSH_SPEED, STAGE_BACK, STAGE_MIN, LANE_OFF, LANE_SPEED, LAPS, LANE_GAP, LANE_STAGE, laneHp, CORNERS, gateOf, gatePos, laneLen, pileSlot, postScore, weakestPost, startLane, rushNeed, rushTarget, startRush, localDefense, FENCE_UP, FENCE_NAME, upgradeFence, repairBreach, orderReinforce, setWinner, setLeakSpawner, mobWanted, stepHorde, hordeBreach };
+return { WAVE_GAP, waveSize, hpScale, HORDE_HP, ARMORED, isArmored, eliteChance, THEMES, TIERS, tierOf, BOSSES, bossFor, FOES, nearestD, loopPos, wanted, planWave, pileSummary, pileText, RUSH_SPEED, STAGE_BACK, STAGE_MIN, LANE_OFF, LANE_SPEED, LAPS, LANE_GAP, LANE_STAGE, laneHp, CORNERS, gateOf, gatePos, laneLen, pileSlot, postScore, weakestPost, startLane, rushNeed, rushTarget, startRush, localDefense, FENCE_UP, FENCE_NAME, upgradeFence, repairBreach, orderReinforce, setWinner, setLeakSpawner, mobWanted, stepHorde, hordeBreach };
 })();
 // ===== src/defense.js =====
 __X["src/defense.js"] = (function () {
@@ -5251,6 +5411,8 @@ const { castOn } = __X["src/cast.js"];
 const { ROSTER_KINDS } = __X["src/roster.js"];
 const { hordeBreach, FOES, setLeakSpawner, setWinner } = __X["src/horde.js"];
 const { PUSH_EVERY, toPush } = __X["src/push.js"];
+const { raidRange, nextSlot, raidHpBonus } = __X["src/rounds.js"];
+const { gapK } = __X["src/endless.js"];
 const { earn, hurtPost } = __X["src/turret.js"];
 const { pace } = __X["src/pace.js"];
 const { pk } = __X["src/perks.js"];
@@ -5261,6 +5423,8 @@ const { sw } = __X["src/pace.js"];
 //       → 진돗개 하나: 전 병력이 책임지역(방어 진지)으로, 5분대기조는 대대장이 직접 지휘 → 격퇴 / 돌파.
 // 우리 병사는 맞으면 쓰러지고, 시간 안에 후송 못 하면 순직할 수 있다 (방탄 장비가 시간을 벌어 준다).
 // 결정은 모두 w.rng로 해서 저장·시험이 똑같이 흘러간다.
+
+
 
 
 
@@ -5309,14 +5473,20 @@ function postSpots(w) {
 // 초소 신설: 철책 안쪽 가장자리(철책에서 3칸 안)에, 다른 초소와 4칸 넘게 떨어져야 한다. 근무자는 병력이 늘어야 붙는다
 const NEWPOST_COST = 1500;
 const MAX_POSTS = Infinity; // 초소는 원하는 만큼 (5칸씩 띄우는 것만 지킨다)
+// 초소를 세울 수 있는 자리인가 (짓기와 화면 미리보기가 같은 판정을 쓴다: 예전엔 미리보기는 빨간데 눌러 보면 지어졌다)
+function postSpotWhy(w, x, y) {
+  if ((w.posts || []).length >= MAX_POSTS) return `초소는 부대에 ${MAX_POSTS}개까지입니다. 있는 초소의 무기를 증설하십시오.`;
+  const edge = Math.min(x, y, w.W - 1 - x, w.H - 1 - y);
+  if (!w.inBounds(x, y) || edge < 2 || edge > 3) return '초소는 철책 바로 안쪽(철책에서 1~2칸)에만 세울 수 있습니다.';
+  if (w.buildingAt(x, y) || w.isRoad(x, y)) return '건물이나 도로 위에는 세울 수 없습니다.';
+  if (w.ofType?.('gate').some((g) => x >= g.x - 2 && x < g.x + g.w + 2 && y >= g.y - 2 && y < g.y + g.h + 2)) return '위병소(정문) 바로 옆에는 세울 수 없습니다. 출입로를 막습니다.';
+  if ((w.posts || []).some((p) => Math.hypot(p.x - (x + 0.5), p.y - (y + 0.5)) < 4)) return '다른 초소와 너무 가깝습니다 (4칸 넘게 띄우십시오).'; // 한 면에 7~8개까지
+  if (w.budget < NEWPOST_COST) return `예산이 모자랍니다 (${NEWPOST_COST.toLocaleString('ko-KR')}만 원).`;
+  return null;
+}
 function addPost(w, x, y) {
   initDefense(w);
-  if ((w.posts || []).length >= MAX_POSTS) return { ok: false, why: `초소는 부대에 ${MAX_POSTS}개까지입니다. 있는 초소의 무기를 증설하십시오.` };
-  const edge = Math.min(x, y, w.W - 1 - x, w.H - 1 - y);
-  if (!w.inBounds(x, y) || edge < 2 || edge > 3) return { ok: false, why: '초소는 철책 바로 안쪽(철책에서 1~2칸)에만 세울 수 있습니다.' };
-  if (w.buildingAt(x, y) || w.isRoad(x, y)) return { ok: false, why: '건물이나 도로 위에는 세울 수 없습니다.' };
-  if (w.posts.some((p) => Math.hypot(p.x - (x + 0.5), p.y - (y + 0.5)) < 3.9)) return { ok: false, why: '다른 초소와 너무 가깝습니다 (4칸 넘게 띄우십시오).' }; // 한 면에 7~8개까지
-  if (w.budget < NEWPOST_COST) return { ok: false, why: `예산이 모자랍니다 (${NEWPOST_COST.toLocaleString('ko-KR')}만 원).` };
+  const why = postSpotWhy(w, x, y); if (why) return { ok: false, why };
   w.budget -= NEWPOST_COST;
   const id = Math.max(0, ...w.posts.map((p) => p.id)) + 1;
   w.posts.push({ id, x: x + 0.5, y: y + 0.5, guards: [], reliefs: [], since: 0, built: true });
@@ -5374,6 +5544,12 @@ function stepPosts(w, dm) {
   { let i = 0; for (const [p] of order) p.open = p.broken ? false : i++ < manned; } // 부서진 초소는 비우고 다음 초소로
   // 방어 진지 경계조: 새 판은 병력의 60%에서 초소 근무자를 뺀 만큼 진지에 들어간다 (철책에 가까운 진지부터).
   // 병력이 늘수록 더 많은 진지가 살아난다 → 신병이 곧 화력
+  // 부서진 진지는 하루 뒤 경계조가 모래주머니를 다시 쌓는다 (돈 안 듦). 예전엔 부서진 채로 남아 병력이 늘어도 아무도 못 들어갔다
+  if (w.fresh && !w.raid) for (const b of w.ofType('bunker')) {
+    if (!b.damaged) { b.dmgSince = null; continue; }
+    b.dmgSince ??= w.t;
+    if (w.t - b.dmgSince >= 1440) { b.damaged = false; b.dmgSince = null; b.hp = 100; w.mapVersion++; w.addLog('병사들이 부서진 방어 진지에 모래주머니를 다시 쌓았습니다. 다시 경계조가 들어갑니다.', 'event', [Math.floor(b.x), Math.floor(b.y)]); }
+  }
   const gar = garrisons(w);
   for (const b of w.ofType('bunker')) if (b.gar && !gar.includes(b.gar) && (b.gar.guards.length || b.gar.reliefs.length)) { for (const id of [...b.gar.guards, ...b.gar.reliefs]) { const s = w.soldier(id); if (s && (s.state === 'post' || s.state === 'toPost')) release(w, s); } b.gar.guards = []; b.gar.reliefs = []; } // 부서지거나 공사 중인 진지: 경계조를 내린다
   if (w.fresh) { let left = guardRoom(w); gar.forEach((g) => { g.open = w.soldiers.length >= 12 && left >= g.size; if (g.open) left -= g.size; }); } // 새 판: 병력의 60%까지 경계에 선다 (초소 먼저, 남는 만큼 진지)
@@ -5492,6 +5668,7 @@ function spawnRaid(w, opts = {}) {
   if (w.fresh && !opts.n && w.lossStreak) n = Math.max(4, Math.round(n * 0.75)); // 지난번에 졌으면 적도 수를 줄여 온다
   if (w.fresh && !opts.n) n += Math.min(3 * (w.raidCount || 0), 8, Math.round((w.push?.left || 0) * 0.05)); // 초소가 못 막은 만큼 더 넘어온다
   if (w.fresh && !opts.n) n = Math.max(3, Math.round(n * 1)); // 밀리고 있으면 적게 넘어온다
+  if (w.fresh && !opts.n) { const [lo, hi] = raidRange(w.waveNo || 1); n = Math.max(lo, Math.min(hi, n)); } // 구간별 허용 범위 (rounds.js)
   if (opts.n) n = opts.n;
   const hb = hordeBreach(w, n); // 새 판: 철책 밖에 모여 있던 무리가 그 자리로 넘어온다
   if (hb && opts.leak) { bx = hb.bx; by = hb.by; n = Math.max(1, Math.min(n, hb.units.length)); } // 월책: 철책에 닿은 놈들만 넘어온다
@@ -5506,7 +5683,7 @@ function spawnRaid(w, opts = {}) {
   w.enemies = [];
   w.radio = []; // 새 침공: 지난 교전 무전은 지운다
   for (let i = 0; i < n; i++) {
-    w.enemies.push({ id: ++w.thoughtSeq, x: ox + (w.rng() - 0.5) * 1.5, y: oy + (w.rng() - 0.5) * 1.5, hp: Math.min(5, 2 + Math.floor(lv / 3)), state: 'creep', dir: 1, phase: 0,
+    w.enemies.push({ id: ++w.thoughtSeq, x: ox + (w.rng() - 0.5) * 1.5, y: oy + (w.rng() - 0.5) * 1.5, hp: Math.min(5, 2 + Math.floor(lv / 3)) + (w.fresh ? raidHpBonus(w.waveNo || 1) : 0), state: 'creep', dir: 1, phase: 0,
       skill: 0.3 + Math.min(0.3, lv * 0.03) + w.rng() * 0.05, fireCd: w.rng() * 10, off: [(w.rng() - 0.5) * 4, (w.rng() - 0.5) * 4], kind: 'rifle' }); // 산개해서 온다
   }
   // 3파부터 저격수(멀리서 정확히, 대신 약함), 6파부터 중화기 사수(잘 안 쓰러짐)
@@ -5859,7 +6036,17 @@ const isNight = (w) => w.minute >= 20 * 60 || w.minute < 6 * 60;
 function stepDefense(w, dm) {
   initDefense(w);
   stepPosts(w, dm);
-  w.next.raidT ??= (w.next.raid || 4) * DAY; // 옛 저장: 주 단위 예약을 분 단위로
+  w.next.raidT ??= w.fresh ? Infinity : (w.next.raid || 4) * DAY; // 옛 저장: 주 단위 예약을 분 단위로 · 새 판은 정해진 자리에만 (아래 습격 예정)
+  // 새 판 철책 습격 예정: 구간마다 한 번, 장갑 웨이브가 나올 때 미리 알린다 (2구간부터: 첫 구간은 대응을 익히는 시간)
+  //   시각 = 알린 뒤 5~7시간 (5·10·15구간은 다음 물량 웨이브가 도는 중에 일부러 겹친다) · 방향 = 구간마다 북→동→남→서 · 인원 = 허용 범위의 아래 절반
+  { const R = w.waveRush;
+    if (w.fresh && R?.lane && R.slot === 'armor' && R.block >= 2 && w.raidPlanFor !== R.block && !w.raid) {
+      w.raidPlanFor = R.block;
+      const [lo, hi] = raidRange(R.no), side = R.block % 4, n = lo + Math.floor(w.rng() * (Math.floor((lo + hi) / 2) - lo + 1)), overlap = R.block % 5 === 0;
+      const at = overlap ? nextSlot(w.t + 1, 720 * gapK(w)) + 60 : w.t + 360 + Math.round((w.rng() - 0.5) * 120);
+      w.raidPlan = { side, n, at, overlap, block: R.block }; w.next.raidT = Math.min(w.next.raidT ?? Infinity, at);
+      w.addLog(`정찰 보고: 약 ${Math.round((at - w.t) / 60)}시간 뒤 ${['북', '동', '남', '서'][side]}쪽 철책으로 적 ${n}명 안팎이 넘어올 조짐입니다.${overlap ? ' 다음 물량 웨이브가 도는 중에 겹칩니다.' : ''} 그쪽 초소·진지·5분대기조를 준비하십시오.`, 'warn');
+    } }
   if (w.awaitingUnit) { w.next.raidT = Math.max(w.next.raidT, w.t + DAY * 1.5); return; } // 창설 중에는 침투도 없다
   if (w.noRaids && !w.raid) { w.bigRaid = null; w.next.raidT = Infinity; return; } // 새 판: 진돗개 없음 (웨이브가 철책 앞 승부)
   if (!w.raid && !w.push && w.bigRaid && w.week >= w.bigRaid.at && (w.fresh || !w.event)) {
@@ -5874,11 +6061,14 @@ function stepDefense(w, dm) {
     radio(w, '사단 상황실: 첩보대로 본대가 넘어왔다! 전 병력 대비!', 'bad');
     w.next.raidT = Math.max(w.next.raidT, w.t + DAY * 3);
   }
-  if (!w.raid && w.t >= w.next.raidT && (w.fresh || (!w.event && !w.bigRaid)) && !w.waveRush) { // 새 판: 결정 카드를 기다리지 않는다 (카드는 싸움이 끝나야 뜬다: 서로 기다리다 멈췄다)
-    // 웨이브가 오는 중이면 끝난 뒤에 (공세는 한 번에 하나)
-    spawnRaid(w);
+  const P = w.raidPlan && !w.push && w.t >= w.raidPlan.at ? w.raidPlan : null;
+  if (!w.raid && w.t >= w.next.raidT && (w.fresh || (!w.event && !w.bigRaid)) && (!w.waveRush || P?.overlap)) { // 새 판: 결정 카드를 기다리지 않는다 (카드는 싸움이 끝나야 뜬다: 서로 기다리다 멈췄다)
+    // 웨이브가 오는 중이면 끝난 뒤에 (공세는 한 번에 하나) · 예고한 겹침만 웨이브 중에
+    if (P) { w.hordeGather = [[w.W / 2, 0], [w.W, w.H / 2], [w.W / 2, w.H], [0, w.H / 2]][P.side]; w.raidPlan = null; } // 알린 쪽으로
+    spawnRaid(w, P ? { n: P.n } : {});
+    if (P && w.raid) w.raid.planned = true; // 예고 습격: 져도 시설 피해만 (지휘관 경고는 총공세 실패에만)
     if (w.fresh && w.raid) reportRaid(w, false); // 새 판: 숨어 들어오는 일은 없다. 모이는 게 보였고, 넘어오는 순간 전 병력이 움직인다
-    if (w.raid && !w.raid.leak) w.raidWaveNo = w.waveNo || 0;
+    if (w.raid && !w.raid.leak && !w.fresh) w.raidWaveNo = w.waveNo || 0; // 새 판은 총공세 주기를 흔들지 않는다 (총공세 끝에서만 센다)
     w.next.raidT = Infinity; // 끝나면 다음 침공을 잡는다
   }
   const r = w.raid;
@@ -6275,7 +6465,7 @@ function provoke(w) {
 // 교전이 끝난 뒤 부상 처리: 경상은 반 주 쉰다. 중상은 국군병원으로 실려 가 두 주 동안 자리를 비운다 (의무실이 있으면 한 주)
 function wound(w, s, r) {
   s.pendingThought = 'injured';
-  if (!s.grave) { s.injuredUntil = w.t + DAY * 0.5; r.light = (r.light || 0) + 1; return; }
+  if (!s.grave) { s.injuredUntil = w.t + DAY * 0.5; r.light = (r.light || 0) + 1; if (!(s.mem || []).some((m) => m.k === 'hurt')) (s.mem ??= []).push({ k: 'hurt', week: w.week }); return; }
   s.grave = false; r.graveN = (r.graveN || 0) + 1;
   const weeks = w.ofType('clinic').some((b) => !b.damaged) ? 1 : 2;
   s.injuredUntil = s.awayUntil = w.t + DAY * weeks; s.awayReward = 0; s.awayKind = 'hospital'; s.state = 'away'; s.moving = false;
@@ -6365,7 +6555,7 @@ function finishRaid(w, won) {
     w.budget += result.money;
     for (const s of w.soldiers) { s.happy = clamp(s.happy + 2 - r.kia * 6); s.A = clamp(s.A + 3); s.D = clamp(s.D + 1); s.T = clamp(s.T + 1); } // 실전 경험 (침공이 잦으니 한 번의 무게는 작게)
     w.unit.I = clamp((w.unit.I ?? 50) + 3); // 경계작전 성공은 상급부대 평가에 반영된다
-    if (mvp) { mvp.A = clamp(mvp.A + 12); mvp.pendingThought = 'elite'; }
+    if (mvp) { mvp.A = clamp(mvp.A + 12); mvp.pendingThought = 'elite'; (mvp.mem ??= []).push({ k: 'pushHero', n: mvp.takedowns, week: w.week }); } // 전역 소감에 남는다 (cases.memoryLine)
     myRaid(w, mvp, true);
     castOn(w, 'raidWon');
     w.addLog(`총공세를 막아 냈습니다. ${r.atFence ? `${r.n}명을 철책 앞에서 다 잡았습니다.` : `넘어온 적 ${r.n} 중 ${r.down} 제압.`} 포상금 ${result.money.toLocaleString('ko-KR')}만 원.${mvp ? ` 수훈: ${result.mvp}.` : ''}`, 'event');
@@ -6378,7 +6568,7 @@ function finishRaid(w, won) {
     myRaid(w, null, false);
   }
   // 순직자가 나오면 지휘 책임
-  if (w.fresh && !r.tut && w.warnCommander) { if (won) w.clearWarning(); else if ((w.stats.raidLost || 0) <= 1 || w.week < 10) w.addLog('아직 부대를 꾸리는 때라 이번에는 경고가 없습니다. 초소와 방어 진지를 늘리십시오.', 'warn'); else w.warnCommander('총공세를 막지 못함'); }
+  if (w.fresh && !r.tut && w.warnCommander) { if (won) w.clearWarning(); else if (r.planned) w.addLog('예고된 습격을 다 막지는 못했습니다. 부서진 시설을 고치고, 그쪽 초소·진지를 보강하십시오 (지휘관 경고는 없습니다).', 'warn'); else if ((w.stats.raidLost || 0) <= 1 || w.week < (w.fresh ? 14 : 10)) w.addLog('아직 부대를 꾸리는 때라 이번에는 경고가 없습니다. 초소와 방어 진지를 늘리십시오.', 'warn'); else w.warnCommander('총공세를 막지 못함'); }
   else if (!won && r.kia >= 3 && w.warnCommander) w.warnCommander(); // 막지도 못하고 셋 이상 잃으면 지휘 책임
   // 작전 리뷰: 잘된 점 / 진 이유 / 다음엔 (최대 세 줄)
   const review = [];
@@ -6423,7 +6613,7 @@ setWinner((w, n) => {
 });
 setLeakSpawner((w, n) => { spawnRaid(w, { n, leak: true }); if (w.raid) { w.raid.leak = true; reportRaid(w, false); } }); // 눈앞에서 넘어왔으니 바로 보고된다
 
-return { INDOOR_DELAY, DEF, isFence, NEWPOST_COST, MAX_POSTS, addPost, initDefense, DUTY, guardRoom, garrisons, morale, alertness, ARMS, TOD_RANGE, RAID_EVERY, wavesToRaid, spawnRaid, radio, cohesion, qrfMembers, reportRaid, orderQrf, orderSquad, throwGrenade, fireFlare, covered, stepDefense, knockDown };
+return { INDOOR_DELAY, DEF, isFence, NEWPOST_COST, MAX_POSTS, postSpotWhy, addPost, initDefense, DUTY, guardRoom, garrisons, morale, alertness, ARMS, TOD_RANGE, RAID_EVERY, wavesToRaid, spawnRaid, radio, cohesion, qrfMembers, reportRaid, orderQrf, orderSquad, throwGrenade, fireFlare, covered, stepDefense, knockDown };
 })();
 // ===== src/levels.js =====
 __X["src/levels.js"] = (function () {
@@ -6514,10 +6704,12 @@ __X["src/missions.js"] = (function () {
 const { bedsOf } = __X["src/levels.js"];
 const { BUILDINGS } = __X["src/data.js"];
 const { josa } = __X["src/korean.js"];
+const { realWeek } = __X["src/pace.js"];
 // 임무 수첩: 지금 무엇을 해야 하는지 한 번에 하나씩 알려 준다.
 // 순서대로 하나씩 열리고, 이미 해 둔 임무는 바로 넘어간다.
 // how = 무엇을 어떻게 하는지, why = 왜 하는지. 둘 다 주임원사가 대대장에게 하는 말이다 (다나까체).
 // how는 문자열이거나 (w) => 문자열 (내 병사 이름을 넣을 때).
+
 
 
 
@@ -6541,6 +6733,8 @@ const CHAPTERS = ['1장 · 창설', '2장 · 곪은 곳', '3장 · 총공세', '
 
 // 부대 안쪽 진지: 철책에서 6칸 넘게 들어온 곳 (넘어온 적을 막는 자리)
 const innerBunkers = (w) => w.ofType('bunker').filter((b) => Math.min(b.x, b.y, w.W - b.x - b.w, w.H - b.y - b.h) >= 6).length;
+// 다음 사열 날: 화면 20주차부터 반년마다 (실제 판 52일이면 10일째부터 13일마다). 수첩·알림이 '며칠 뒤'를 보인다
+function inspectAt(w) { const s = realWeek(w, 20), p = Math.max(1, realWeek(w, 26)); const k = w.week <= s ? 0 : Math.ceil((w.week - s) / p); return { next: s + k * p, every: p }; }
 const MISSIONS = [
   { ch: 0, title: '부대 창설: 생활관과 식당 짓기', reward: 0, key: 'barracks',
     progress: (w) => [(connected(w, 'barracks') ? 1 : 0) + (connected(w, 'mess') ? 1 : 0), 2],
@@ -6630,7 +6824,7 @@ const MISSIONS = [
     how: '사단 첩보가 내려오면 준비 방식을 고르십시오. 한 주 뒤 본대 12명이 넘어옵니다. 진지, 감시탑, 5분대기조, 수류탄을 다 쓰셔야 합니다. 지면 몇 주 뒤 다시 옵니다.',
     why: '정찰조와는 차원이 다릅니다. 막아 내면 부대 표창과 포상금 3,000만 원입니다.',
     check: (w) => ((w.flags.bossDown || 0) >= 1 || w.flags.bigRaid === 'won') },
-  { ch: 3, title: '사단장 사열 통과', reward: 1000, wait: true,
+  { ch: 3, title: '사단장 사열 통과', reward: 1000, wait: true, eta: (w) => { const n = inspectAt(w).next - w.week; return n <= 0 ? '오늘 사열입니다' : `다음 사열 ${n}일 뒤 (화면 ${Math.round(n * 104 / (w.termWeeks || 104))}주 뒤)`; },
     how: '20주차부터 반년마다 사단장님 사열이 있습니다. 때가 되면 보고드릴 테니 준비 방식만 골라 주십시오.',
     why: '지적만 안 받으면 됩니다. 85점을 넘기면 우수 부대로 뽑혀 표창도 받습니다.',
     check: (w) => !!w.flags.inspectPass },
@@ -6723,7 +6917,7 @@ function advanceMission(w) {
   return m;
 }
 
-return { CHAPTERS, MISSIONS, MISSION_VER, migrateMissions, activeMission, advanceMission };
+return { CHAPTERS, inspectAt, MISSIONS, MISSION_VER, migrateMissions, activeMission, advanceMission };
 })();
 // ===== src/wildlife.js =====
 __X["src/wildlife.js"] = (function () {
@@ -7198,6 +7392,150 @@ function pressureWeekly(w) {
 
 return { PRESSURE_CARDS, pressureWeekly };
 })();
+// ===== src/cases.js =====
+__X["src/cases.js"] = (function () {
+'use strict';
+const { josa } = __X["src/korean.js"];
+// 사건 기록 (보고와 실제가 다른 일): 점호에서 시작된 질책이 간부가 돌아간 뒤 계급 순서대로 아래로 내려간다 (내리갈굼).
+// 당직 보고는 늘 "이상 없음"이다. 대대장이 무엇을 확인하느냐에 따라 알게 되는 것이 다르고,
+// 그날의 조치가 다음 주 점호·후임의 면담 반응·재발 여부·전역 소감으로 돌아온다.
+//   1) 아침: '당직 보고' 카드 — 보고대로 처리 / 관련 병사를 따로 면담 / 불시 순찰
+//   2) 면담·순찰로 드러나면: '조치' 카드 — 징계·분리 / 분대장 훈계 / 덮기
+//   3) 일주일 뒤: '후속 점호' — 재발했는가, 그 이병은 이제 무슨 말을 하는가
+// 표현은 저장소 규칙대로 말과 분위기까지만 (cast.js 머리말: 가혹행위는 그리지 않는다).
+// 고정 해시만 쓴다: 부대 난수 순서를 건드리지 않고, 같은 저장을 불러오면 같은 일이 같은 날 일어난다.
+
+
+const clamp = (v, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, v));
+const h = (a, b) => { const n = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return n - Math.floor(n); };
+const live = (w) => w.soldiers.filter((s) => !s.gone && !s.leaving && !s.mine && !s.castKey); // 내 병사·우리 분대는 따로 이야기가 있다
+const RK = ['이병', '일병', '상병', '병장'];
+const nm = (w, id) => { const s = w.soldier(id); return s ? `${RK[s.rank] || ''} ${s.name}` : '전역한 병사'; };
+const CASE_GAP = 5; // 같은 일이 짧은 간격으로 되풀이되지 않게 (게임 날 = 복무 주)
+// 다음 주 재발 확률: 무엇을 했느냐에 따라
+const RECUR = { believed: 0.6, patrolMiss: 0.3, scolded: 0.35, disciplined: 0.1, buried: 0.7 };
+// 생기는 확률 (하루에 한 번, 저녁 점호 뒤): 곪은 정도(Z)와 악습 방침이 키운다
+const caseChance = (w) => 0.03 + Math.min(0.12, (w.Z || 0) / 500) + 0.04 * (w.policy?.abuse || 0);
+
+const mem = (w, id, m) => { const s = w.soldier(id); if (s) (s.mem ??= []).push({ ...m, week: w.week }); };
+
+// 하루에 한 번 (events.weeklyEvents): 새 사건이 생기거나, 일주일 지난 사건의 후속 점호가 온다
+function casesWeekly(w) {
+  w.cases ??= [];
+  const due = w.cases.find((c) => !c.followed && c.followAt != null && w.week >= c.followAt);
+  if (due && !w.eventQueue.includes('caseFollow') && w.event?.id !== 'caseFollow') { rollFollow(w, due); w.caseNow = due.id; w.eventQueue.push('caseFollow'); return; }
+  if (w.awaitingUnit || w.week < 3 || w.caseOpen || w.week < (w.next.caseAt ?? 0)) return;
+  const roll = h(w.week + 7, (w.seed || 1) * 3 + w.cases.length);
+  if (roll >= caseChance(w)) return;
+  makeCase(w);
+}
+// 사건 하나를 만든다 (시험·개발용으로도 부른다): 이병 하나, 상병 이상 하나, 사이의 일병 하나, 본 사람 둘
+function makeCase(w) {
+  w.cases ??= [];
+  const ss = live(w), low = ss.filter((s) => s.rank === 0), mid = ss.filter((s) => s.rank === 1), top = ss.filter((s) => s.rank >= 2);
+  if (!low.length || !top.length) return;
+  const pick = (arr, k) => arr[Math.floor(h(w.week, k) * arr.length)];
+  const victim = pick(low, 11), perp = pick(top, 13), relay = mid.length ? pick(mid, 17) : null;
+  const wit = ss.filter((s) => ![victim, perp, relay].includes(s) && s.rank <= 2).sort((a, b) => h(a.id, w.week) - h(b.id, w.week)).slice(0, 2);
+  const c = { id: (w.caseSeq = (w.caseSeq || 0) + 1), week: w.week, victim: victim.id, perp: perp.id, relay: relay?.id ?? null, wit: wit.map((s) => s.id), status: 'reported', known: 'none', recurred: false };
+  w.cases.push(c); w.caseOpen = c.id; w.caseNow = c.id; w.next.caseAt = w.week + CASE_GAP;
+  w.Z = (w.Z || 0) + 3; victim.happy = clamp(victim.happy - 6);
+  mem(w, victim.id, { k: 'chainVictim', case: c.id }); mem(w, perp.id, { k: 'chainPerp', case: c.id }); if (relay) mem(w, relay.id, { k: 'chainRelay', case: c.id });
+  for (const s of wit) mem(w, s.id, { k: 'chainWitness', case: c.id });
+  w.eventQueue.unshift('caseReport'); // 아침 보고는 미루지 않는다
+}
+const cur = (w) => (w.cases || []).find((c) => c.id === w.caseNow);
+const truth = (w, c, full) => {
+  const v = nm(w, c.victim), p = nm(w, c.perp), r = c.relay != null ? nm(w, c.relay) : null;
+  const top = `저녁 점호 때 ${josa(p, '이/가')} 관물대 정리로 당직사관에게 지적받았습니다. 소등 뒤 ${r ? `${josa(p, '은/는')} ${josa(r, '을/를')} 화장실로 불러 "애들 교육 똑바로 시켜라"고 다그쳤고, ${josa(r, '은/는')}` : `${josa(p, '은/는')}`} ${josa(v, '을/를')} 새벽 한 시까지 관물대 앞에 세워 각을 다시 잡게 하고 말꼬리를 잡았습니다`;
+  return full ? `${top}. ${c.wit.length ? `같은 생활관 ${c.wit.map((id) => nm(w, id)).join('·')}은 다 들었지만 아무 말도 하지 않았습니다.` : ''} 당직 보고에는 한 줄도 없었습니다.` : `소등 뒤 ${josa(r || p, '이/가')} ${josa(v, '을/를')} 관물대 앞에 세워 두고 있는 것을 순찰이 봤습니다. 누가 시켰는지는 다들 모른다고 합니다.`;
+};
+
+const CASE_CARDS = {
+  caseReport: {
+    title: '당직 보고: 점호 이상 없음', def: 0,
+    text: (w) => { const c = cur(w); if (!c) return ''; return `어젯밤 당직사관 보고서: "21:30 점호 실시, 인원 이상 없음, 특이사항 없음." 그런데 아침 식당에서 ${josa(nm(w, c.victim), '이/가')} 밥을 거의 남겼고, 눈이 벌겋더라는 말이 행정반에서 돌았습니다.${(w.Z || 0) >= 30 ? ' 요즘 소원수리함이 유난히 비어 있습니다.' : ''}`; },
+    options: [
+      { label: '보고대로 처리한다', desc: '간부 시간이 들지 않습니다. 보고서에 없는 일은 보이지 않습니다.' },
+      { label: '관련 병사들을 따로따로 면담한다', desc: '300만 원과 간부 반나절이 듭니다 (오늘 훈련 성과가 조금 줄어듭니다). 누가 무엇을 했고 누가 알았는지 드러날 수 있습니다.' },
+      { label: '오늘 밤 생활관 불시 순찰을 돈다', desc: '돈은 들지 않지만 생활관 전체가 잠을 설칩니다. 현장을 볼 수도, 못 볼 수도 있습니다.' },
+    ],
+    resolve(w, i) {
+      const c = cur(w); if (!c) return [];
+      if (i === 0) { c.status = 'believed'; c.followAt = w.week + 7; w.caseOpen = null; return ['당직 보고대로 처리했습니다. 행정반은 조용합니다.']; }
+      if (i === 1) {
+        w.budget -= 300; for (const s of w.soldiers) if (!s.gone) s.A = clamp(s.A - 1);
+        c.known = 'full'; w.caseNow = c.id; w.eventQueue.unshift('caseAction');
+        for (const id of c.wit) { const s = w.soldier(id); if (s) s.happy = clamp(s.happy + 2); } // 말할 기회가 생겼다
+        return [`따로따로 면담했습니다. ${truth(w, c, true)}`];
+      }
+      for (const s of w.soldiers) if (!s.gone) { s.needs && (s.needs.energy = clamp(s.needs.energy - 8)); s.D = clamp(s.D + 1); }
+      if (h(c.id, w.week + 3) < 0.5) { c.known = 'partial'; w.eventQueue.unshift('caseAction'); return [`불시 순찰: ${truth(w, c, false)}`]; }
+      c.status = 'patrolMiss'; c.followAt = w.week + 7; w.caseOpen = null;
+      return ['불시 순찰을 돌았지만 다들 자는 척했습니다. 다만 순찰이 돈다는 소문은 금방 퍼졌습니다.'];
+    },
+  },
+  caseAction: {
+    title: '드러난 일: 어떻게 조치하나', def: 1,
+    text: (w) => { const c = cur(w); if (!c) return ''; return c.known === 'full' ? `${josa(nm(w, c.perp), '이/가')} 시작했고${c.relay != null ? ` ${josa(nm(w, c.relay), '이/가')} 아래로 내렸습니다` : ''}. ${josa(nm(w, c.victim), '은/는')} "괜찮습니다"만 되풀이합니다. 누구까지 책임을 물을지 정해야 합니다.` : `순찰에 걸린 건 ${josa(nm(w, c.relay ?? c.perp), '이/가')} ${josa(nm(w, c.victim), '을/를')} 세워 둔 장면뿐입니다. 그 위에 누가 있는지는 모릅니다.`; },
+    options: (w) => { const c = cur(w), full = c?.known === 'full'; return [
+      { label: full ? '시작한 선임까지 징계하고 생활관을 분리한다' : '걸린 병사를 징계한다', desc: full ? '군기가 서고 곪은 것(악습)이 크게 줄어듭니다. 징계받은 둘은 마음이 상하고, 그 생활관은 한동안 어수선합니다.' : '걸린 사람만 책임집니다. 위에서 시킨 사람은 그대로입니다.' },
+      { label: '분대장에게 훈계하도록 맡긴다', desc: '조용히 끝납니다. 다시 일어날 수 있습니다.' },
+      { label: '부대 밖으로 새지 않게 덮는다', desc: '오늘은 조용합니다. 곪은 것이 커지고, 밖으로 새면 감찰이 옵니다.' },
+    ]; },
+    resolve(w, i) {
+      const c = cur(w); if (!c) return []; w.caseOpen = null; c.followAt = w.week + 7;
+      const v = w.soldier(c.victim), p = w.soldier(c.perp), r = c.relay != null ? w.soldier(c.relay) : null;
+      if (i === 0) {
+        c.status = c.known === 'full' ? 'disciplined' : 'scolded'; // 위를 못 잡으면 훈계와 다를 바 없다
+        const who = c.known === 'full' ? [p, r] : [r || p];
+        for (const s of who) if (s) { s.happy = clamp(s.happy - 10); s.D = clamp(s.D + 4); }
+        if (v) { v.happy = clamp(v.happy + (c.known === 'full' ? 8 : 3)); v.A = clamp(v.A + 3); }
+        w.Z = Math.max(0, (w.Z || 0) - (c.known === 'full' ? 15 : 5));
+        return [c.known === 'full' ? `${josa(nm(w, c.perp), '와/과')} ${c.relay != null ? `${nm(w, c.relay)} ` : ''}징계, 생활관을 나눴습니다. 그날 저녁 점호는 유난히 짧았습니다.` : `${josa(nm(w, c.relay ?? c.perp), '을/를')} 징계했습니다. 생활관에서는 "위는 그대로"라는 말이 돕니다.`];
+      }
+      if (i === 1) { c.status = 'scolded'; w.Z = Math.max(0, (w.Z || 0) - 4); if (v) v.happy = clamp(v.happy + 2); return ['분대장이 생활관을 모아 놓고 한마디 했습니다. 다들 "알겠습니다"라고 했습니다.']; }
+      c.status = 'buried'; w.Z = (w.Z || 0) + 10; if (v) { v.grudge = Math.min(40, (v.grudge || 0) + 12); }
+      if (h(c.id, 99) < 0.4 && !w.leakAt) w.leakAt = w.week + 4 + (c.id % 4); // 덮은 일은 밖으로 샌다 (events.js 폭로)
+      return ['없던 일로 했습니다. 당직 보고는 계속 "이상 없음"입니다.'];
+    },
+  },
+  caseFollow: {
+    title: '후속 점호', def: 0,
+    text: (w) => { const c = cur(w); if (!c) return ''; return `${c.week}일째 그 일 이후 일주일. ${followLine(w, c)}`; },
+    options: [{ label: '기록해 둔다', desc: '사건 기록에 남습니다 (부대 현황 → 사건 기록).' }],
+    resolve(w) { const c = cur(w); if (c) c.followed = true; return []; },
+  },
+};
+// 일주일 뒤: 재발 여부는 그날의 조치로 정해진 확률을 고정 해시로 한 번 굴린다 (불러와도 같다)
+function rollFollow(w, c) {
+  if (c.rolled) return; c.rolled = true; c.recurred = h(c.id, 777) < (RECUR[c.status] ?? 0.5);
+  const v = w.soldier(c.victim);
+  if (c.recurred) { if (v) { v.happy = clamp(v.happy - 8); v.grudge = Math.min(40, (v.grudge || 0) + 6); } w.Z = (w.Z || 0) + 6; mem(w, c.victim, { k: 'chainAgain', case: c.id }); }
+  else if (v) v.happy = clamp(v.happy + 3);
+}
+function followLine(w, c) {
+  const vn = nm(w, c.victim);
+  const voice = c.recurred ? (c.status === 'buried' ? '"말해 봤자 달라지는 게 없지 않습니까."' : '"…괜찮습니다."') : (c.status === 'disciplined' ? '"요즘은 잘 잡니다. 감사합니다."' : c.status === 'scolded' ? '"조금 나아졌습니다. 아직 눈치는 봅니다."' : '"그냥… 지냅니다."');
+  return `${c.recurred ? '같은 생활관에서 비슷한 일이 또 있었다는 말이 나왔습니다. ' : '그 뒤로 비슷한 일은 들리지 않습니다. '}${josa(vn, '은/는')} 면담에서 이렇게 말했습니다: ${voice}`;
+}
+
+// 전역 소감에 남는 한 줄: 겪은 일·한 일·본 일 가운데 가장 무거운 것 (없으면 null)
+function memoryLine(w, s) {
+  const m = s.mem || [], c = (id) => (w.cases || []).find((x) => x.id === id);
+  const find = (k) => m.filter((x) => x.k === k).map((x) => ({ ...x, c: c(x.case) })).at(-1);
+  const v = find('chainVictim'), again = find('chainAgain'), p = find('chainPerp'), r = find('chainRelay'), wi = find('chainWitness'), hero = find('pushHero'), hurt = find('hurt');
+  if (v) { const st = v.c?.status; if (again) return '이병 때 일은 두 번째부터는 아무한테도 말 안 했습니다.'; if (st === 'disciplined') return '이병 때 그 밤, 대대장님이 따로 불러 들어 주셔서 버틸 수 있었습니다.'; if (st === 'buried' || st === 'believed') return '이병 때 일은 보고서엔 "이상 없음"으로 남았겠죠. 저는 다 기억합니다.'; return '이병 때 일은… 이제 그냥 지나간 일로 하겠습니다.'; }
+  if (p) return p.c?.status === 'disciplined' ? '그때 징계받은 거, 그땐 억울했는데 지금은 받을 만했다고 생각합니다.' : '저도 그렇게 배웠으니까요. 후임들은 다르게 지냈으면 합니다.';
+  if (r) return '위에서 내려온 걸 아래로 내린 게 저였습니다. 그게 제일 마음에 걸립니다.';
+  if (wi) return wi.c?.status === 'disciplined' ? '그날 밤 말 못 한 게 걸렸는데, 면담 때라도 말해서 다행입니다.' : '그날 밤 알면서 말 못 한 게 아직 걸립니다.';
+  if (hero) return `총공세 날 철책에서 ${hero.n}명 막아 낸 건 평생 얘깃거리입니다.`;
+  if (hurt) return '진돗개 때 다친 데가 아직 비 오면 쑤십니다. 그래도 다 같이 살아 나왔습니다.';
+  return null;
+}
+
+return { CASE_GAP, RECUR, caseChance, casesWeekly, makeCase, CASE_CARDS, memoryLine };
+})();
 // ===== src/minigames/index.js =====
 __X["src/minigames/index.js"] = (function () {
 'use strict';
@@ -7410,7 +7748,7 @@ __X["src/events.js"] = (function () {
 'use strict';
 let weekDate;
 __late.push(() => { ({ weekDate } = __X["src/sim.js"]); });
-const { MISSIONS } = __X["src/missions.js"];
+const { MISSIONS, inspectAt } = __X["src/missions.js"];
 const { spawnAnimals, dispatchHunters, KINDS } = __X["src/wildlife.js"];
 const { BUILDINGS, UNLOCKS, UNLOCK_WEEK } = __X["src/data.js"];
 const { realWeek } = __X["src/pace.js"];
@@ -7418,6 +7756,7 @@ const { josa } = __X["src/korean.js"];
 const { MY_CARDS, myWeekly } = __X["src/mystory.js"];
 const { PRESSURE_CARDS, pressureWeekly } = __X["src/pressure.js"];
 const { castWeekly } = __X["src/cast.js"];
+const { CASE_CARDS, casesWeekly } = __X["src/cases.js"];
 const { applySports, autoSports, applyShoot, autoHits, applyCbrn, autoCbrn, applyFitness, autoFitness, applyRanger, autoRanger } = __X["src/minigames/index.js"];
 // 부대 사건 (기획안 10장): 결정 카드 사건과 저절로 지나가는 사건.
 // 결정 카드는 한 번에 하나만 뜨고, 나머지는 줄을 서서 다음 주에 뜬다.
@@ -7428,8 +7767,10 @@ const { applySports, autoSports, applyShoot, autoHits, applyCbrn, autoCbrn, appl
 
 
 
+const showWeeksE = (w, n) => Math.max(1, Math.round(n * 104 / (w.termWeeks || 104)));
 const remainingUnlocks = (w) => Object.keys(UNLOCKS).filter((k) => !(w.unlocked || Object.keys(UNLOCKS)).includes(k));
 const cardOptions = (card, w) => (typeof card.options === 'function' ? card.options(w) : card.options);
+
 
 
 
@@ -7854,7 +8195,7 @@ function droneSighting(w) {
   if (w.droneMiss % 4 === 0) w.warnCommander(); // 네 번 놓칠 때마다 (예산 집행 → 대드론 장비)
 }
 
-Object.assign(CARDS, MY_CARDS, PRESSURE_CARDS); // 내 병사 이야기 · 유혹과 대가 카드
+Object.assign(CARDS, MY_CARDS, PRESSURE_CARDS, CASE_CARDS); // 내 병사 이야기 · 유혹과 대가 · 사건 기록(보고와 실제) 카드
 
 // ---------- 매주 일정 ----------
 // onNewWeek 끝에서 부른다. 정해진 날짜의 사건과 무작위 사건을 줄에 넣고, 카드가 비어 있으면 하나를 꺼낸다.
@@ -7863,8 +8204,8 @@ function weeklyEvents(w) {
   const month = d.getUTCMonth() + 1, day = d.getUTCDate();
   const r = w.rng;
 
-  if (w.week >= 18 && (w.week - 18) % 26 === 0) w.addLog('2주 뒤에 사단장님 사열이 잡혔습니다.', 'event');
-  if (w.week >= 20 && (w.week - 20) % 26 === 0) w.eventQueue.push('inspect');
+  // 사열: 화면 20주차부터 반년(26주)마다 = 실제 판(52일)에서는 10일째부터 13일마다 (예전엔 환산이 빠져 20·46일 두 번뿐이었다)
+  { const I = inspectAt(w); if (w.week === I.next - Math.max(1, realWeek(w, 2))) w.addLog(`사단장님 사열이 ${showWeeksE(w, I.next - w.week)}주 뒤로 잡혔습니다.`, 'event'); if (w.week === I.next) w.eventQueue.push('inspect'); }
   // 창설 첫 달은 부대 정비 기간: 측정·훈련 행사를 하지 않는다
   const settled = w.foundedWeek == null || w.week >= w.foundedWeek + 4;
   if (settled) {
@@ -7914,6 +8255,7 @@ function weeklyEvents(w) {
   myWeekly(w); // 내 병사: 이야기 사건 · 일기
   castWeekly(w); // 우리 분대: 생활관 대화 장면
   pressureWeekly(w); // 급할 때 오는 지름길, 몇 주 뒤 돌아오는 대가
+  casesWeekly(w); // 점호 뒤 내리갈굼: 당직 보고와 실제가 다를 수 있다 (cases.js)
   // 결정을 한 주 넘게 미루면 기본안대로 간다 (화면이 없는 시험에서도 멈추지 않게)
   if (w.event && w.event.week < w.week) resolveEvent(w, CARDS[w.event.id].def, true);
   if (!w.event && w.eventQueue.length && !w.raid) { // 침투 대응 중에는 카드를 미룬다
@@ -9007,6 +9349,7 @@ const { realWeek, pace, CAL, setCal, showWeeks } = __X["src/pace.js"];
 const { formSquads, squadDecide, musterAt, stepSquads, squadArrive } = __X["src/squads.js"];
 const { stepWildlife, stepRelief } = __X["src/wildlife.js"];
 const { stepScenes, stepSceneSoldier, onHourScenes, farewell, onArrival } = __X["src/scenes.js"];
+const { memoryLine } = __X["src/cases.js"];
 const { PathCache, DIRS } = __X["src/path.js"];
 const { josa } = __X["src/korean.js"];
 const { capOf, upkeepOf, bedsOf } = __X["src/levels.js"];
@@ -9020,6 +9363,7 @@ const { stepCat, catMood, weeklyPaper, onMaintain } = __X["src/gags.js"];
 const { assignDuties, mechWork, staffN, useful, workN, staffWage, itemUpkeep, itemAt, removeItem, roadStep, goSeat, stepPatrols, migrateStaff } = __X["src/staff.js"];
 // 시뮬레이션 핵심. 화면(DOM)과 완전히 분리되어 Node에서도 돈다 (기획안 17장).
 // 시간 단위: 게임 분. 화면의 하루 = 복무 1주일을 대표한다.
+
 
 
 
@@ -9673,6 +10017,7 @@ class World {
     if (this.fresh && this.raid) gm = dtSec * 60 / CONFIG.secPerHour * 0.25 * Math.min(2, speed); // 기지 방어전: 손쓸 겨를이 있게 천천히
     else if ((this.incident && this.animals && this.animals.length) || this.raid) gm = dtSec * 60 / CONFIG.secPerHour * (this.fresh ? 0.5 * Math.min(2, speed) : 0.3); // 동물 소동·침투 중엔 (철책을 자르는 동안부터) 천천히 보여 준다
     else if ((this.minute >= 22 * 60 || this.minute < 6 * 60 + 30) && !(this.fresh && (this.waveRush || this.push))) gm *= CONFIG.nightBoost; // 밤은 빨리 넘기되, 웨이브가 와 있으면 제 속도로
+    if (this.fresh && !this.raid && !this.push && this.tailing) gm *= 2; // 웨이브가 사실상 끝났다 (남은 적 15% 이하): 기다리지 않게 빨리 감는다
     gm = Math.min(gm, 180);
     while (gm > 0) {
       const dm = Math.min(1, gm);
@@ -10875,7 +11220,7 @@ class World {
     this.termSat.push(sat);
     if (s.mine) this.mySat = sat;
     const pool = DISCHARGE_REMARKS.find((r) => sat >= r.min).texts;
-    const remark = pool[Math.floor(this.rng() * pool.length)];
+    const band = pool[Math.floor(this.rng() * pool.length)], line = memoryLine(this, s), remark = line ? ` ` : band; // 겪은 일이 소감에 남는다 (cases.js)
     (this.termVoices ??= []).push({ name: s.name, sat: Math.round(sat), remark, mine: !!s.mine });
     if (s.mine) this.addLog(`내 병사 병장 ${josa(s.name, '이/가')} 전역했습니다. "${remark}"`, 'mine');
     else this.addLog(`병장 ${s.name} 전역: "${remark}"`, 'discharge');
@@ -15421,7 +15766,7 @@ function drawTurretShot(r, world, sh, age) {
   const ang = Math.atan2(ty - my, tx - mx);
   const star = (len) => { c.save(); c.translate(mx, my); c.rotate(ang); c.fillStyle = '#fff6c8'; c.beginPath(); c.moveTo(0, -2.4 * z); c.lineTo(len, 0); c.lineTo(0, 2.4 * z); c.closePath(); c.fill(); c.fillStyle = '#ffd060'; c.beginPath(); c.moveTo(0, -4 * z); c.lineTo(len * 0.45, 0); c.lineTo(0, 4 * z); c.closePath(); c.fill(); c.restore(); };
   if (sh.tur === 'mortar') { // 발사 순간: 포구 화염과 하얀 연기만 (포탄은 drawShells가)
-    if (age < 0.12) flash((night ? 40 : 24) * z, 0.8);
+    if (age < 0.12) flash((night ? 30 : 20) * z, 0.5); // 폭발 빛: 작고 옅게 (눈부심)
     const a = Math.max(0, 0.5 - age * 0.5);
     for (let k = 0; k < 4; k++) { c.fillStyle = `rgba(220,215,200,${a})`; c.beginPath(); c.arc(mx + 18 * z + k * 3 * z, my + 10 * z - age * 30 * z - k * 4 * z, (4 + age * 14) * z, 0, Math.PI * 2); c.fill(); }
     return;
@@ -15450,7 +15795,7 @@ function drawTurretShot(r, world, sh, age) {
   }
   for (let k = 0; k < rounds; k++) {
     const a0 = age - k * gap; if (a0 < 0) continue;
-    if (a0 < 0.06) { flash((night ? ST.flash * 2 : ST.flash) * z, sh.tur === 'rifle' ? 0.5 : 0.75); star(ST.star * z); }
+    if (a0 < 0.06) { flash((night ? ST.flash * 1.4 : ST.flash) * z * 0.7, sh.tur === 'rifle' ? 0.35 : 0.45); star(ST.star * z * 0.7); } // 총구 불꽃: 높은 단계일수록 커지던 빛을 줄였다 (눈부심)
     const f = a0 / fly;
     if (f <= 1.15) { // 예광탄: 짧은 빛줄기가 날아간다
       const jx = (hsh(sh.id, k) - 0.5) * 6 * z, jy = (hsh(k, sh.id) - 0.5) * 4 * z;
@@ -15534,15 +15879,15 @@ function drawShells(r, world) {
 // 큰 폭발 (박격포·크레모아): 섬광 → 불덩이 → 충격파 고리 → 흙·파편이 튀어 떨어짐 → 연기 기둥 → 그을린 자국
 const BOOM = {
   def:     { S: 1.2, shake: 0.2,  flash: 0,    frag: 14, smoke: 7 },
-  strike:  { S: 2.3, shake: 0.65, flash: 0.6, frag: 22, smoke: 9, ring: 'rgba(255,200,90,0.9)' },
-  claymore:{ S: 1.3, shake: 0.35, flash: 0.35, frag: 20, smoke: 6 },
+  strike:  { S: 2.3, shake: 0.65, flash: 0.16, frag: 22, smoke: 9, ring: 'rgba(255,200,90,0.9)' },
+  claymore:{ S: 1.3, shake: 0.35, flash: 0.12, frag: 20, smoke: 6 },
   mortar:  { S: 1.1, shake: 0.1,  flash: 0,    frag: 12, smoke: 5 },
   nade:    { S: 0.55, shake: 0.03, flash: 0,   frag: 7,  smoke: 2 },
   rocket:  { S: 1.25, shake: 0.14, flash: 0,   frag: 14, smoke: 6, ring: 'rgba(255,150,40,0.9)' },
-  missile: { S: 1.9, shake: 0.32, flash: 0.25,    frag: 18, smoke: 6, ring: 'rgba(150,215,255,0.95)' },
+  missile: { S: 1.9, shake: 0.32, flash: 0,    frag: 18, smoke: 6, ring: 'rgba(150,215,255,0.95)' },
   shell120:{ S: 1.5, shake: 0.14, flash: 0,    frag: 18, smoke: 6, ring: 'rgba(255,210,120,0.9)' },
-  k9:      { S: 2.4, shake: 0.42, flash: 0.25,    frag: 26, smoke: 9, ring: 'rgba(255,110,50,0.95)' },
-  chunmoo: { S: 2.1, shake: 0.32, flash: 0.2,    frag: 20, smoke: 7, ring: 'rgba(255,170,60,0.95)' },
+  k9:      { S: 2.4, shake: 0.42, flash: 0,    frag: 26, smoke: 9, ring: 'rgba(255,110,50,0.95)' },
+  chunmoo: { S: 2.1, shake: 0.32, flash: 0,    frag: 20, smoke: 7, ring: 'rgba(255,170,60,0.95)' },
   sam:     { S: 1.0, shake: 0.06, flash: 0,    frag: 12, smoke: 5, ring: 'rgba(150,255,130,0.95)' },
 };
 function drawBooms(r, world) {
@@ -15550,13 +15895,13 @@ function drawBooms(r, world) {
   r.tbSeen = r.tbSeen || new Map();
   for (const b of world.tBooms || []) {
     let born = r.tbSeen.get(b.id);
-    if (born === undefined) { born = r.time; r.tbSeen.set(b.id, born); const q = BOOM[b.kind] || BOOM.def; r.shake = Math.max(r.shake || 0, q.shake * 1.4);  r.onBoom?.(true, b.x, b.y, b.kind); }
+    if (born === undefined) { born = r.time; r.tbSeen.set(b.id, born); const q = BOOM[b.kind] || BOOM.def; r.shake = Math.min(0.4, Math.max(r.shake || 0, q.shake * (b.kind === 'strike' || b.kind === 'claymore' ? 1 : 0.25))); /* 초소 포탄(박격포·로켓·K9)은 거의 흔들지 않는다: 연달아 떨어지면 멀미가 났다 · 내가 부른 포격만 크게 */  r.onBoom?.(true, b.x, b.y, b.kind); }
     const age = r.time - born; if (age > 6) continue;
     const Q = BOOM[b.kind] || BOOM.def, [bx, by0] = r.iso(b.x, b.y), by = by0 - (b.air ? 32 * z : 0), S = Q.S * (1 + (b.fire || 0) * 0.15) * (['missile', 'sam', 'nade'].includes(b.kind) ? 1 + Math.max(0, (b.lv || 3) - 3) * 0.16 : 1);
     if (bx < -150 || bx > r.vw + 150 || by < -150 || by > r.vh + 150) continue;
     if (!b.air && b.kind !== 'nade') c.fillStyle = `rgba(30,22,14,${Math.min(0.55, (6 - age) / 6 * 0.6)})`; else c.fillStyle = 'rgba(0,0,0,0)'; c.beginPath(); c.ellipse(bx, by, 16 * z * S, 7 * z * S, 0, 0, Math.PI * 2); c.fill(); // 그을린 자국
     if (age > 2.2) continue;
-    if (Q.flash && age < 0.1) { c.fillStyle = `rgba(255,255,240,${Q.flash})`; c.fillRect(0, 0, r.vw, r.vh); } // 섬광 (포격·크레모아만: 자주 터지는 탄은 눈이 아프지 않게)
+    if (Q.flash && age < 0.1 && (r.time - (r.lastFlash ?? -9) > 1.5 || r.flashId === b.id)) { r.lastFlash ??= r.time; if (r.flashId !== b.id) { r.flashId = b.id; r.lastFlash = r.time; } c.fillStyle = `rgba(255,250,230,${Q.flash})`; c.fillRect(0, 0, r.vw, r.vh); } /* 화면 전체 섬광은 내가 부른 포격·크레모아만, 1.5초에 한 번, 옅게: 초소 미사일·K9가 연달아 터지면 화면이 하얗게 바래 눈이 아팠다 */ // 섬광 (포격·크레모아만: 자주 터지는 탄은 눈이 아프지 않게)
     if (Q.ring && age < 0.5) { c.globalCompositeOperation = 'lighter'; c.strokeStyle = Q.ring; c.globalAlpha = 1 - age / 0.5; c.lineWidth = 4 * z * (1 - age); c.beginPath(); c.ellipse(bx, by, (8 + age * 220) * z, (4 + age * 110) * z, 0, 0, Math.PI * 2); c.stroke(); c.globalAlpha = 1; c.globalCompositeOperation = 'source-over'; } // 미사일: 색 충격파
     if (age < 0.9) { // 땅 먼지 고리: 납작하게 퍼진다
       const k = age / 0.9; c.strokeStyle = `rgba(150,125,90,${0.55 * (1 - k)})`; c.lineWidth = (6 - 4 * k) * z * S;
@@ -15628,7 +15973,7 @@ const { LV, lvOf } = __X["src/levels.js"];
 const { dutyNames } = __X["src/staff.js"];
 const { TALL } = __X["src/grass.js"];
 const { weekDate } = __X["src/sim.js"];
-const { isFence, DEF, covered, TOD_RANGE } = __X["src/defense.js"];
+const { isFence, DEF, covered, TOD_RANGE, postSpotWhy } = __X["src/defense.js"];
 // 아이소메트릭 렌더러. 스케치의 깔끔하고 귀여운 스타일을 따른다 (기획안 16장).
 
 
@@ -15862,8 +16207,8 @@ class Renderer {
     if (this.noShake) this.shake = 0; // 설정: 화면 흔들림 끔
     if (this.shake > 0) {
       this.shake = Math.max(0, this.shake - dt);
-      const m = this.shake * 18;
-      c.translate((Math.random() - 0.5) * m, (Math.random() - 0.5) * m);
+      const m = this.shake * 9, t = this.time || 0; // 작고 부드럽게 (매 장면 무작위로 튀면 멀미가 났다)
+      c.translate(Math.sin(t * 38) * m, Math.cos(t * 31) * m * 0.6);
     }
     c.fillStyle = COLORS.outside;
     c.fillRect(0, 0, this.vw, this.vh);
@@ -16245,7 +16590,8 @@ class Renderer {
     if (ui.tool === 'newpost') { // 초소 신설 자리: 철책 바로 안쪽 · 다른 초소와 떨어져야
       if (!world.inBounds(hx, hy)) return;
       const edge = Math.min(hx, hy, world.W - 1 - hx, world.H - 1 - hy);
-      const ok = edge >= 2 && edge <= 3 && !world.buildingAt(hx, hy) && !world.isRoad(hx, hy) && !(world.posts || []).some((p) => Math.hypot(p.x - (hx + 0.5), p.y - (hy + 0.5)) < 4.5) && world.budget >= 1500 && (world.posts || []).length < 16;
+      const why = postSpotWhy(world, hx, hy), ok = !why; void edge; // 짓기(addPost)와 같은 판정
+      ui.postHint?.(why);
       this.poly(this.tilePts(hx, hy), ok ? 'rgba(120,220,120,0.5)' : 'rgba(230,80,60,0.45)', ok ? '#e8ffe0' : '#ffd6cf');
       return;
     }
@@ -18302,8 +18648,10 @@ const FEATURES = [
   { g: '알아보기', id: 'medals', dock: true, icon: 'medal', name: '훈장함', el: '#w-medal', say: '받은 훈장과, 아직 못 받은 훈장을 받는 법이 있습니다.', when: '다음 목표를 고를 때.' },
 ];
 const TERMS = [
-  ['웨이브', '철책 밖으로 몰려오는 적 한 무리.'],
-  ['총공세', '여섯 웨이브 동안 쌓인 적이 한꺼번에 덮치는 것. 막아 내면 포상금을 받습니다.'],
+  ['웨이브', '철책 밖을 두 바퀴 도는 적 한 무리. 매일 10시·22시에 옵니다. 정면 → 속도 → 장갑 → 물량 → 공중 → 보스, 여섯 번이 한 구간입니다.'],
+  ['총공세', '보스 웨이브 바로 뒤, 그동안 쌓인 적(놓친 적 + 숲에 남은 몫)이 한꺼번에 덮치는 것. 막아 내면 포상금을 받습니다.'],
+  ['진돗개 예고', '구간마다 한 번, 장갑 웨이브 때 몇 시간 뒤 어느 쪽으로 몇 명이 넘어올지 알려 줍니다.'],
+  ['적 대응', '한 무기에 쏠리면 적이 그 무기에 맞춰 옵니다. 쏠릴수록 그 무기가 덜 듭니다 (적 정보에 몇 % 줄었는지 보입니다).'],
   ['지휘관 경고', '총공세에 뚫리거나 준비태세가 두 달 내리 D면 하나. 셋이면 해임입니다. 총공세를 두 번 내리 막으면 하나 지워집니다.'],
   ['전투력', '병사들의 사격·체력·전술과 장비를 합친 힘.'],
   ['행복', '낮으면 사고가 납니다. 잠·밥·샤워·쉬는 시간이 가장 크게 움직입니다.'],
@@ -18465,7 +18813,8 @@ const { TURRETS, repairPost, postRepairCost, postHp, postMax, MAX_LV, upReq, cmd
 const { WALL_COST, WALL_MAX, wallMax, buildWall, callCrew, crewSize } = __X["src/crew.js"];
 const { ACT_NAME, TRICK_NAME, actOf, trickOf } = __X["src/roster.js"];
 const { animalSprite } = __X["src/sprites.js"];
-const { FOES, THEMES, CORNERS, upgradeFence, FENCE_UP, FENCE_NAME } = __X["src/horde.js"];
+const { FOES, THEMES, CORNERS, upgradeFence, FENCE_UP, FENCE_NAME, pileSummary, pileText } = __X["src/horde.js"];
+const { raidRange } = __X["src/rounds.js"];
 const { garrisons, wavesToRaid, guardRoom } = __X["src/defense.js"];
 const { SPEAKERS, sceneById, resolveScene, fill, bond, reservedWhy } = __X["src/cast.js"];
 const { LV, lvOf, capOf, upkeepOf, upgradable, upgradeCost, upgradeGain, canUpgrade, upgradeBuilding, maxLv } = __X["src/levels.js"];
@@ -18474,13 +18823,14 @@ const { CARDS, cardOptions } = __X["src/events.js"];
 const { MISSIONS, CHAPTERS, activeMission } = __X["src/missions.js"];
 const { takePerk, UPG, upgLv, upgCost, buyUpg, STAT, myActive, MY_R, MY_ACC, MERIT_STEP, meritNext } = __X["src/perks.js"];
 const { planHtml } = __X["src/plan.js"];
-const { ROLES, COUNTERS, threatK } = __X["src/brain.js"];
+const { ROLES, COUNTERS, threatK, counterCut } = __X["src/brain.js"];
 const { TOUCH, forTouch } = __X["src/touch.js"];
 const { weekLabel, weekDate, gradeOf } = __X["src/sim.js"];
 const { showWeeks } = __X["src/pace.js"];
 const { josa } = __X["src/korean.js"];
 const { KINDS, dispatchHunters } = __X["src/wildlife.js"];
 // 화면 위 UI: 상황판, 도구 상자, 클립보드, 상황일지 (기획안 16장).
+
 
 
 
@@ -18550,6 +18900,7 @@ const TOOLS = [
   { id: 'bulldoze', name: '철거', key: 'X', danger: true, icon: 'bulldozer', cat: 'land' },
 ];
 // 건물마다 하는 일 (건설 버튼에 올리면 보인다)
+const NEWPOST_HINT = '초소 신설 · 1,500만 — 철책 바로 안쪽(1~2칸)에, 다른 초소와 4칸 넘게, 위병소 옆은 안 됩니다. 초록 칸에 누르십시오.';
 const BUILD_HINT = {
   barracks: '병사가 자는 곳. 정원 20명, 넘치면 끼어 잔다.', mess: '밥을 먹는다. 모자라면 줄이 길어진다.', px: '간식과 여가. 이용할 때마다 수익이 난다.',
   shower: '씻는 곳. 청결이 떨어지면 행복도가 깎인다.', laundry: '전투복을 빨아 입는다. 청결이 덜 떨어진다.', barber: '용모 단정. 군기가 오른다.',
@@ -18872,6 +19223,9 @@ ${BUILD_HINT[t.id] || ''}` : name + (t.key ? ` (${t.key})` : '');
     this.toast(`사단 승인! 건설 → ${tab} 탭에 ${josa(types.map((t) => BUILDINGS[t].name).join(', '), '이/가')} 생겼습니다.`);
   }
 
+  // 초소 신설 미리보기: 빨간 칸에 올리면 왜 안 되는지 (render.js가 부른다)
+  postHint(why) { if (this._postWhy === why) return; this._postWhy = why; const h = this.buildhint; if (h && this.tool === 'newpost') h.textContent = why ? `여기는 안 됩니다 — ${why}` : NEWPOST_HINT; }
+
   // ---------- 주간 보고 ----------
   showReport() {}
 
@@ -18908,6 +19262,17 @@ ${BUILD_HINT[t.id] || ''}` : name + (t.key ? ` (${t.key})` : '');
     }
     const top = [...by.values()].sort((a, b) => b.n - a.n).slice(0, 8);
     return `<div class="thoughts"><h3>병사들 생각 <small>(최근 하루, 많은 순)</small></h3>${top.length ? top.map((g) => `<button class="th-row" data-sid="${g.id}"><span>"${esc(g.text)}"</span><b>${g.n}명</b></button>`).join('') : '<div class="crow"><span>아직 들린 말이 없습니다.</span></div>'}</div>`;
+  }
+  // 사건 기록: 당직 보고와 실제가 달랐던 일. 대대장이 확인한 만큼만 보인다 (cases.js)
+  casesHTML(w) {
+    const cs = (w.cases || []).slice(-6).reverse(); if (!cs.length) return '';
+    const RK = ['이병', '일병', '상병', '병장'], nm = (id) => { const s = w.soldier(id); return s ? `${RK[s.rank] || ''} ${esc(s.name)}${s.gone ? ' (전역)' : ''}` : '전역한 병사'; };
+    const ST = { reported: '보고 받음', believed: '보고대로 처리 (확인 안 함)', patrolMiss: '순찰 · 못 봄', scolded: '분대장 훈계', disciplined: '징계 · 생활관 분리', buried: '덮음' };
+    const row = (c) => { const full = c.known === 'full', part = c.known === 'partial';
+      const who = full ? `${nm(c.perp)} → ${c.relay != null ? `${nm(c.relay)} → ` : ''}${nm(c.victim)} · 알고 있던 사람 ${c.wit.map(nm).join('·') || '없음'}` : part ? `${nm(c.relay ?? c.perp)} → ${nm(c.victim)} · 위에 누가 있는지 모름` : `당직 보고 "이상 없음" · ${nm(c.victim)}이 밥을 남겼다는 말만`;
+      const after = c.rolled ? (c.recurred ? '일주일 뒤: 또 있었다' : '일주일 뒤: 조용하다') : c.followAt != null ? `후속 점호 ${Math.max(0, c.followAt - w.week)}일 뒤` : '';
+      return `<div class="crow"><span><b>${c.week}일째 · ${ST[c.status] || c.status}</b><br><small>${who}${after ? ` · ${after}` : ''}</small></span></div>`; };
+    return `<div class="cases"><h3>사건 기록 <small>(당직 보고와 실제 · 확인한 만큼만 보입니다)</small></h3>${cs.map(row).join('')}</div>`;
   }
   awardsHTML(w) {
     return `<div class="awards"><h3>이달의 사단 표창 후보 <small>(월말 결산)</small></h3>${w.awardCandidates().map((a) => `<div class="aw ${a.ok ? 'ok' : ''}"><b>${a.ok ? '✔' : '·'} ${a.name}</b><span>${a.need}</span><em>${money(a.money)}</em></div>`).join('')}</div>`;
@@ -18968,6 +19333,7 @@ ${BUILD_HINT[t.id] || ''}` : name + (t.key ? ` (${t.key})` : '');
       <div class="st-say"><span class="who">주임원사</span>${say}</div>
       <div class="st-tiles">${tile('행복도', u.avgH, d.H)}${tile('군기', u.avgD, d.D)}${tile('성취감', u.avgA, d.A)}${tile('전투력', u.U)}</div>
       ${this.thoughtsHTML(w)}
+      ${this.casesHTML(w)}
       ${this.awardsHTML(w)}
       <details class="st-more"${this.statusOpen ? ' open' : ''}>
         <summary>자세히 보기</summary>
@@ -19066,9 +19432,10 @@ ${BUILD_HINT[t.id] || ''}` : name + (t.key ? ` (${t.key})` : '');
     if (hint) {
       const def = BUILDINGS[id];
       hint.textContent = def ? `${def.name} · ${def.w}×${def.h}칸 · ${money(def.cost)} · 주당 유지비 ${money(def.upkeep)} — ${BUILD_HINT[id] || ''}`
-        : id === 'road' ? '도로: 눌러서 길게 그으면 깔린다. 건물은 입구(노란 칸) 앞에 도로가 닿아야 드나든다.' : id === 'bulldoze' ? '철거: 건물값의 70%를 돌려받는다.' : '건물이나 병사를 눌러 살펴본다.';
+        : id === 'newpost' ? NEWPOST_HINT : id === 'road' ? '도로: 눌러서 길게 그으면 깔린다. 건물은 입구(노란 칸) 앞에 도로가 닿아야 드나든다.' : id === 'bulldoze' ? '철거: 건물값의 70%를 돌려받는다.' : '건물이나 병사를 눌러 살펴본다.';
     }
     for (const k in this.toolBtns) this.toolBtns[k].classList.toggle('on', k === id);
+    this._postWhy = null;
     this.app.canvas.style.cursor = id === 'select' ? 'default' : 'crosshair';
   }
 
@@ -19234,7 +19601,7 @@ ${BUILD_HINT[t.id] || ''}` : name + (t.key ? ` (${t.key})` : '');
     else if (w.push?.phase === 'muster') { hot = 'raid'; t = `총공세 · 적 ${w.push.n0}`; s = `${span(Math.ceil(w.push.goAt - w.t))} 뒤 ${w.push.targets.length > 3 ? `초소 ${w.push.targets.length}곳으로` : `${w.push.targets.join('·')}초소로`}`; }
     else if (w.push) { hot = 'raid'; t = `총공세 · 남은 적 ${w.push.left}/${w.push.n0}`; s = `${w.push.targets.length > 3 ? `초소 ${w.push.targets.length}곳` : `${w.push.targets.join('·')}초소`} · ${span(Math.max(0, Math.ceil(w.push.until - w.t)))} 남음`; }
     else if (R && R.phase === 'stage') { t = `제${R.no} 웨이브 · ${theme(R)}`; s = `${CORNERS[R.corner] || ''}에 ${R.total}명 집결 · ${span(Math.ceil(R.goAt - w.t))} 뒤 출발`; }
-    else if (R) { t = `제${R.no} 웨이브 · ${theme(R)}`; s = `도는 적 ${R.left ?? R.total}/${R.total} · 적 준비 ${Math.round(w.prep || 0)}%`; }
+    else if (R) { t = `제${R.no} 웨이브 · ${R.boss ? `보스 ${R.boss}` : theme(R)}`; s = `도는 적 ${R.left ?? R.total}/${R.total}${w.tailing ? ' · 정리 중 (빨리 감기)' : ` · 적 준비 ${Math.round(w.prep || 0)}%`}`; }
     else { t = `제${nw.no} 웨이브 · ${nw.boss ? `보스 ${nw.boss.name}` : theme(nw)}`; s = `${span(left)} 뒤 ${CORNERS[nw.corner] || ''}에서 ${nw.list.length}명`; }
     txt('wb-t', t); txt('wb-s', s);
     bar.className = hot;
@@ -19244,7 +19611,8 @@ ${BUILD_HINT[t.id] || ''}` : name + (t.key ? ` (${t.key})` : '');
     this.$('wb-capm').style.width = `${Math.min(100, Math.round(n / cap * 100))}%`;
     this.$('wb-cap').className = n >= cap * 0.9 ? 'bad' : n >= cap * 0.7 ? 'warn' : '';
     const toAll = wavesToRaid(w);
-    txt('wb-alln', w.raid || w.push ? '지금' : toAll <= 1 ? '이번 웨이브 뒤' : `${toAll}웨이브 뒤`);
+    const early = !w.push && n > cap && toAll <= 2; // 철책 밖이 한도를 넘으면 총공세가 앞당겨진다 (push.js)
+    txt('wb-alln', w.raid || w.push ? '지금' : early ? '한도 초과 · 이번 웨이브 뒤' : toAll <= 1 ? '이번 웨이브 뒤' : `${toAll}웨이브 뒤`);
     this.$('wb-all').className = w.raid || w.push ? 'bad' : toAll <= 2 ? 'warn' : '';
     this.$('wb-cap').hidden = this.$('wb-all').hidden = !!w.raid; this.$('wb-pull').hidden = !!w.raid;
     // 포격
@@ -19304,7 +19672,11 @@ ${BUILD_HINT[t.id] || ''}` : name + (t.key ? ` (${t.key})` : '');
     const list = Object.entries(cnt).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<span>${k} <b>${v}</b></span>`).join('') + (el ? `<span class="el">정예 <b>${el}</b></span>` : '') + (nw.boss ? `<span class="bs">보스 <b>${esc(nw.boss.name)}</b></span>` : '');
     const roles = (nw.roles || []).map((k) => `<p class="warn"><b>새 병과 ${ROLES[k].name}</b> ${ROLES[k].does}. ${ROLES[k].by}.</p>`).join('');
     const c = COUNTERS[nw.counter], fen = Math.round(w.fence ?? 100), flv = w.fenceLv || 1, nb = (w.breaches || []).length;
-    const html = `<h4>다음 · 제${nw.no} 웨이브 <em>${esc(nw.name || T.name)}</em> <small>${T.name}</small></h4>${nw.lead ? `<p class="wm-lead">${esc(FOES[nw.lead].note)}. <b>총공세 때 ${ACT_NAME[actOf(nw.lead)]}.</b>${trickOf(nw.lead) ? ` ${TRICK_NAME[trickOf(nw.lead)]}.` : ''} ${T.sub}.</p>` : `<p class="wm-lead">${T.sub}</p>`}<div class="wm-list">${list}</div>${roles}${c ? `<p class="warn"><b>적 대응: ${c.name}</b> 우리 ${c.why}에 맞췄습니다. ${c.note}.</p>` : ''}
+    const SLOTNAME = { line: '정면', rush: '속도', armor: '장갑', swarm: '물량', air: '공중', boss: '보스' };
+    const plan = nw.block ? `<p class="wm-plan"><b>${nw.block}구간 ${((nw.no - 1) % 6) + 1}/6 · ${SLOTNAME[nw.slot] || ''}${nw.final ? ' · 최종' : ''}</b> 테두리 ${nw.n}명${nw.list.length > nw.n ? ` + 숲에 남는 ${nw.list.length - nw.n}명(총공세 몫)` : ''} · 체력 합 ${Math.round(nw.hp).toLocaleString('ko-KR')}${nw.boss ? ` · 보스 ${Math.round(nw.bossHp).toLocaleString('ko-KR')}` : ''}<br>시험하는 것: ${esc(nw.need || '')}${nw.joinFinal ? ' · <b>도는 중에 최종 보스가 합류합니다</b>' : ''}</p>` : '';
+    const S = pileSummary(w), toAll = wavesToRaid(w), [rlo, rhi] = raidRange(w.waveNo || 1);
+    const pile = `<p class="wm-pile"><b>다음 총공세 (${toAll <= 0 ? '곧' : `${toAll}웨이브 뒤`}) 예상 ${S.total}명</b> · 숲에 남은 몫 ${S.stay} · 놓친 적 ${S.missed}${S.old ? ` · 처음부터 돌던 무리 ${S.old}` : ''} · 체력 합 ${S.hp.toLocaleString('ko-KR')}${S.rounds.length ? `<br>놓친 곳: ${esc(pileText(S))}` : ''}<br><small>철책을 넘으면 진돗개 ${rlo}~${rhi}명 범위 · 숲의 몫은 포격·집중 사격으로만 줄일 수 있습니다</small></p>`;
+    const html = `<h4>다음 · 제${nw.no} 웨이브 <em>${esc(nw.name || T.name)}</em> <small>${T.name}</small></h4>${plan}${pile}${nw.lead ? `<p class="wm-lead">${esc(FOES[nw.lead].note)}. <b>총공세 때 ${ACT_NAME[actOf(nw.lead)]}.</b>${trickOf(nw.lead) ? ` ${TRICK_NAME[trickOf(nw.lead)]}.` : ''} ${T.sub}.</p>` : `<p class="wm-lead">${T.sub}</p>`}<div class="wm-list">${list}</div>${roles}${c ? `<p class="warn"><b>적 대응: ${c.name}</b> 지난 웨이브 피해의 ${nw.counterShare || '-'}%가 ${josa(c.why, '이라/라')} 그 무기 효과가 ${Math.round((nw.counterK || 0) * 100)}% 줄어듭니다. ${c.note}.</p>` : ''}
       <dl><dt>적 전력</dt><dd>${Math.round(threatK(w) * 100)}% <small>주차가 지날수록 오릅니다</small></dd>
       <dt>격파</dt><dd>${((w.turretKills || 0) + (w.mobKills || 0)).toLocaleString('ko-KR')} <small>이번 주 처치 수입 ${(w.bountyWeek || 0).toLocaleString('ko-KR')}만 원</small></dd>
       <dt>철책</dt><dd class="${fen <= 30 ? 'bad' : ''}">${fen}% · ${FENCE_NAME[flv - 1]}${nb ? ` <small>뚫린 곳 ${nb} (지도에서 눌러 수리)</small>` : ''}</dd></dl>`;
@@ -19457,7 +19829,27 @@ ${BUILD_HINT[t.id] || ''}` : name + (t.key ? ` (${t.key})` : '');
     }
     if ((w.Z || 0) >= 45 && w.policy.abuse > 0) add((w.Z || 0) >= 80 ? 'bad' : 'warn', 'alert-triangle', '악습이 곪고 있습니다', '소원수리에 가혹행위 얘기가 나옵니다. 밖으로 새기 전에 지휘 방침에서 악습을 근절로 바꾸십시오.', 'dock:policy');
     if (w.fresh && (w.fence ?? 100) < 70) add((w.fence ?? 100) <= 30 ? 'bad' : 'warn', 'fence', `철책 ${Math.round(w.fence ?? 100)}% — 보수 필요`, `눌러서 바로 보수합니다 (200만 원에 25%). 정비병이 있으면 매주 15%씩 고칩니다.`, 'fence');
-    if (w.fresh && !w.awaitingUnit) { const e = garrisons(w).filter((g) => !g.open); if (e.length) add('warn', 'shield', `빈 방어 진지 ${e.length}곳`, '병력의 60%까지만 경계에 섭니다. 병력을 늘리면 채워집니다.', `${Math.round(e[0].x)},${Math.round(e[0].y)}`); }
+    if (w.fresh && !w.awaitingUnit) {
+      const gs = garrisons(w), e = gs.filter((g) => !g.open), br = w.ofType('bunker').filter((b) => b.damaged);
+      if (br.length) add('warn', 'shield-x', `부서진 방어 진지 ${br.length}곳`, `고칠 때까지 아무도 못 들어갑니다. 병사들이 하루 안에 모래주머니를 다시 쌓습니다${br[0].dmgSince != null ? ` (${Math.max(0, Math.ceil((br[0].dmgSince + 1440 - w.t) / 60))}시간 뒤)` : ''}.`, `${Math.round(br[0].x)},${Math.round(br[0].y)}`);
+      if (e.length) { // 몇 명이 더 있으면 하나가 더 차나 (병력의 60% − 초소 근무)
+        const need = gs.filter((g) => g.open).reduce((a, g) => a + g.size, 0) + e[0].size; let k = 0; while (k < 60 && guardRoom(w, w.soldiers.length + k) < need) k++;
+        add('warn', 'shield', `빈 방어 진지 ${e.length}곳`, `병력의 60%까지만 경계에 섭니다 (초소 근무가 먼저). ${k < 60 ? `병력이 ${k}명 더 있으면 하나가 더 찹니다.` : '초소를 줄이거나 병력을 늘리십시오.'}`, `${Math.round(e[0].x)},${Math.round(e[0].y)}`);
+      }
+    }
+    if (w.fresh && !w.awaitingUnit) {
+      // 전역 파도: 이레 안에 나가는 병력 (초소 근무·특등사수가 빠지면 그 초소가 못 쏜다)
+      const out7 = w.soldiers.filter((s) => !s.gone && !s.leaving && s.enlistWeek + w.serviceOf(s) - w.week <= 7 && s.enlistWeek + w.serviceOf(s) - w.week >= 0), onPost = new Set((w.posts || []).flatMap((p) => p.guards || []));
+      if (out7.length >= 3) { const g = out7.filter((s) => onPost.has(s.id)).length, mk = out7.filter((s) => s.marksman).length; add(out7.length >= 8 ? 'bad' : 'warn', 'calendar-event', `일주일(게임 7일) 안에 전역 ${out7.length}명`, `${g ? `초소 근무 ${g}명` : ''}${g && mk ? ' · ' : ''}${mk ? `특등사수 ${mk}명` : ''}${g || mk ? '이 빠집니다. ' : ''}신병이 들어오기 전에 생활관·근무 인원을 확인하십시오.`, 'dock:status'); }
+      // 다음 총공세 예상 (놓친 적이 어느 라운드에서 왔는지)
+      const toAll = wavesToRaid(w);
+      if (!w.push && !w.raid && toAll <= 2) { const S = pileSummary(w); if (S.total) add(S.missed >= 8 ? 'bad' : 'warn', 'swords', `다음 총공세 예상 ${S.total}명 (${toAll <= 0 ? '곧' : `${toAll}웨이브 뒤`})`, `숲에 남은 몫 ${S.stay} · 놓친 적 ${S.missed}${S.rounds.length ? ` — ${pileText(S, 3)}` : ''}. 숲의 몫은 포격·집중 사격으로 줄입니다.`, 'wave'); }
+      // 예고된 철책 습격
+      const P = w.raidPlan; if (P && !w.raid) { const h = Math.max(0, Math.round((P.at - w.t) / 60)); add(h <= 2 ? 'bad' : 'warn', 'alert-octagon', `습격 예고: ${h}시간 뒤 ${['북', '동', '남', '서'][P.side]}쪽 · ${P.n}명 안팎`, `${P.overlap ? '물량 웨이브와 겹칩니다. ' : ''}그쪽 초소·방어 진지·5분대기조를 준비하십시오.`, null); }
+      // 무기 쏠림 → 적 대응 (붙기 전에 알린다)
+      const B = w.brain, sumD = Object.values(B?.dmg || {}).reduce((a, v) => a + v, 0);
+      if (B && sumD > 20) { const [k, v] = Object.entries(B.dmg).sort((x, y) => y[1] - x[1])[0], sh = v / sumD, C = COUNTERS[k]; if (C && sh >= 0.35) add(sh >= 0.6 ? 'warn' : 'ok', 'adjustments', `${C.why} 쏠림 ${Math.round(sh * 100)}%`, `다음 웨이브부터 적이 ${josa(C.name, '으로/로')} 맞춰 옵니다 (${C.why} 효과 최대 −${Math.round(counterCut(sh) * 100 * Math.min(1, Math.ceil(((w.waveNo || 0) + 1) / 6) / 5))}%). ${C.note}.`, 'wave'); }
+    }
     // 할 수 있는 좋은 일
     const up = Object.keys(UPGRADES).find((k) => { const n = UPGRADES[k].tiers[(w.arms?.[k] || 0) + 1]; return n && w.budget >= n.cost * 1.5; });
     if (up) add('ok', 'sword', `${UPGRADES[up].name} 올릴 여유가 있습니다`, '총공세와 초소 사격이 함께 좋아집니다.', 'dock:arms');
@@ -19478,6 +19870,7 @@ ${BUILD_HINT[t.id] || ''}` : name + (t.key ? ` (${t.key})` : '');
       const g = list[+el.dataset.i].go; if (!g) return;
       box.hidden = true;
       if (g === 'fence') { this.fixFence(); return; } // 철책 알림: 누르면 바로 보수
+      if (g === 'wave') { if (this.wavemore.hidden) this.wb-more.click(); return; } // 총공세·적 대응 알림: 적 정보를 편다
       if (g === 'dock:build') { if (this.$('buildtray').hidden) this.$('w-build').click(); } // 건설은 창이 아니라 아래 막대
       else if (g.startsWith('dock:')) this.app.openDock(g.slice(5)); else this.goTo(g, true);
     }));
@@ -19511,7 +19904,8 @@ ${BUILD_HINT[t.id] || ''}` : name + (t.key ? ` (${t.key})` : '');
         <div class="mtitle" title="${esc(m.why || '')}">${m.title}</div><div class="mhow">${w.fresh && m.howW ? m.howW : typeof m.how === 'function' ? m.how(w) : m.how}</div><div class="mwhy">${m.why}</div>${prog}
         <div class="mfoot">${foot}${m.reward ? `<span>포상금 ${money(m.reward)} 원</span>` : ''}${m.key ? '<button class="mgo">바로 하기</button>' : ''}</div>`;
     }
-    if (waiting) html += `<div class="mwhy">기다리는 중: ${waiting.title}</div>`;
+    if (waiting) html += `<div class="mwhy">기다리는 중: ${waiting.title}${waiting.eta ? ` · ${waiting.eta(w)}` : ''}</div>`;
+    else if (m?.wait && m.eta) html += `<div class="mwhy">${m.eta(w)} · 그때까지는 다른 일을 하셔도 됩니다 (수첩은 멈춰 있지 않습니다).</div>`;
     if (card._html !== html) {
       card._html = html;
       card.innerHTML = html;
@@ -21328,11 +21722,13 @@ function openMinigame(id, mode = 'real', prevSpeed = null) {
 let savedWeek = -1, checkedWeek = -1;
 const raidUI = new RaidUI({ world: () => world, ui, sound, renderer, openDock: (n) => app.openDock(n), keysOff: () => app.keysOff(), tutPost: () => tut.active() && tut.post(), isDragging: () => !!(drag && drag.moved) });
 let boomTimes = [];
+let smallBoomAt = 0;
 renderer.onBoom = (big, x, y, kind) => {
-  if (!big) return sound.boom();
-  const nowS = performance.now() / 1000; boomTimes = boomTimes.filter((q) => nowS - q < 1); if (boomTimes.length >= 6) return; boomTimes.push(nowS); // 겹쳐 터져도 귀가 아프지 않게 1초에 6번까지
-  const d = Number.isFinite(x) && Number.isFinite(y) ? Math.hypot(x - renderer.cam.x, y - renderer.cam.y) : 0, v = Math.max(0.15, 1 - d / (28 / renderer.cam.z)); // 좌표가 깨진 폭발 하나로 소리가 멈추지 않게
-  if (kind === 'nade') { if (!sound.play('boomcrack', { vol: 0.35 * v, rate: 1.4 })) sound.hit?.(sound.ctx?.currentTime ?? 0, { hp: 120, dur: 0.25, vol: 0.4 * v, tone: 80, dest: sound.sfx }); } else sound.bigBoom(v * ({ mortar: 0.6, rocket: 0.7, sam: 0.5, missile: 0.9 }[kind] || 1));
+  const nowS = performance.now() / 1000, mine = kind === 'strike' || kind === 'claymore'; // 내가 부른 포격·크레모아는 크게, 초소 포탄은 작게·드물게
+  if (!big) { if (nowS - smallBoomAt < 0.25) return; smallBoomAt = nowS; return sound.boom(); } // 작은 폭발도 0.25초에 한 번까지
+  boomTimes = boomTimes.filter((q) => nowS - q < 1); if (!mine && boomTimes.length >= 2) return; boomTimes.push(nowS); // 초소 포탄은 1초에 두 번까지 (예전 여섯 번: 쉬지 않고 터져 귀가 아팠다)
+  const d = Number.isFinite(x) && Number.isFinite(y) ? Math.hypot(x - renderer.cam.x, y - renderer.cam.y) : 0, v = Math.max(0.1, 1 - d / (28 / renderer.cam.z)) * (mine ? 1 : 0.55); // 좌표가 깨진 폭발 하나로 소리가 멈추지 않게
+  if (kind === 'nade') { if (!sound.play('boomcrack', { vol: 0.3 * v, rate: 1.4 })) sound.hit?.(sound.ctx?.currentTime ?? 0, { hp: 120, dur: 0.25, vol: 0.35 * v, tone: 80, dest: sound.sfx }); } else sound.bigBoom(v * ({ mortar: 0.6, rocket: 0.65, sam: 0.5, missile: 0.7, k9: 0.8, chunmoo: 0.75, shell120: 0.7 }[kind] || 1));
 };
 let coinAt = 0, coinRun = 0; // 동전 소리: 0.16초에 한 번까지, 잇달아 잡으면 음이 올라간다
 renderer.onCoin = (q) => { if (!q.big) return; const t = performance.now(); if (t - coinAt < 300) return; coinAt = t; if (sound.ctx) sound.play('coin', { vol: 0.45 }); }; // 잡을 때마다 띠링거리지 않게: 큰 포상만 녹음한 동전 소리 한 번
