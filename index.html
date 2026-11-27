@@ -21207,6 +21207,9 @@ if (saved) {
   };
   document.getElementById('new-btn').addEventListener('click', () => showNew(true));
   document.getElementById('back-btn').addEventListener('click', () => showNew(false));
+  // 처음 화면은 늘 새로 부임하기 (하던 판은 아래 작은 단추로 이어 한다)
+  showNew(true); document.getElementById('new-warn').hidden = true;
+  document.getElementById('back-btn').textContent = `하던 판 이어하기 (${document.getElementById('resume-info').textContent})`;
   // 전에 하던 판 (새로 부임하기 직전 판): 두 번 눌러 지금 판과 자리를 바꾼다 (어느 쪽도 지우지 않는다)
   let oldText = null; try { oldText = localStorage.getItem(OLD_KEY); } catch { /* 없음 */ }
   const old = oldText && World.deserialize(oldText);
