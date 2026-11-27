@@ -15,7 +15,7 @@ var ua=navigator.userAgent,ios=/iPhone|iPad|iPod/.test(ua)||(/Macintosh/.test(ua
 addEventListener('pointerdown',function f(){var d=document.documentElement;if(d.requestFullscreen&&!document.fullscreenElement)d.requestFullscreen({navigationUI:'hide'}).catch(function(){});removeEventListener('pointerdown',f,true);},true);
 if(!ios&&!kakao)return;try{if(sessionStorage.getItem('fsguide'))return;}catch(e){}
 addEventListener('DOMContentLoaded',function(){var g=document.createElement('div');g.id='fsguide';
-g.innerHTML='<span>'+(kakao?'카톡 안에서는 주소창을 못 없앱니다. '+(ios?'오른쪽 아래 <b>⬆ → Safari로 열기</b>':'<b>⋮ → 다른 브라우저로 열기</b>'):'주소창 없이 하려면: 아래 <b>공유 ⬆ → 홈 화면에 추가</b> 후 바탕화면 아이콘으로 여세요')+'</span><button type="button">닫기</button>';
+g.innerHTML='<span>'+(kakao?'카톡 안에서는 주소창을 못 없앱니다. '+(ios?'오른쪽 아래 <b>⬆ → Safari로 열기</b>':'<b>⋮ → 다른 브라우저로 열기</b>'):'앱처럼 꽉 찬 화면: <b>공유 ⬆ 버튼 → 홈 화면에 추가</b> → 바탕화면 '좋은 군대' 아이콘으로 열기')+'</span><button type="button">닫기</button>';
 g.querySelector('button').onclick=function(){g.remove();try{sessionStorage.setItem('fsguide','1')}catch(e){}};document.body.appendChild(g);});})();</script>
 </head><body>
 
