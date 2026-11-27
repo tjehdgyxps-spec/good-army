@@ -2056,13 +2056,13 @@ const TRAININGS = {
 // 지휘 방침 카드 (기획안 12장). 각 선택지의 설명은 장점과 대가를 함께 적는다.
 const POLICIES = [
   { id: 'train', name: '훈련 강도', options: ['느슨', '보통', '강함'], def: 1,
-    desc: ['애들은 편해하지만 훈련이 제대로 안 됩니다. 군기도 풀립니다.', '규정대로 훈련합니다.', '훈련 효과가 확실히 붙습니다. 대신 피로가 빨리 쌓이고 다치는 애들이 늘어납니다.'] },
+    desc: ['애들은 덜 지쳐 편해하지만 훈련이 제대로 안 됩니다. 군기도 풀립니다.', '규정대로 훈련합니다.', '훈련 효과가 확실히 붙습니다. 대신 피로가 빨리 쌓이고 다치는 애들이 늘어납니다.'] },
   { id: 'phone', name: '휴대폰 사용', options: ['제한', '규정대로', '확대'], def: 1,
     desc: ['자유 시간이 줄어서 애들 표정이 어두워집니다.', '일과 끝나고만 씁니다.', '애들은 좋아하지만 보안 사고가 날 수 있고, 밤늦게까지 붙잡고 있어 잠이 줄어듭니다.'] },
   { id: 'rollcall', name: '점호', options: ['간소', '규정대로', '엄격'], def: 1,
     desc: ['애들은 편하지만 군기가 풀립니다.', '규정대로 합니다.', '군기가 잡히고 내무검사 점수도 오르지만, 애들이 지칩니다.'] },
   { id: 'leave', name: '외출·외박', options: ['통제', '보통', '적극 허용'], def: 1,
-    desc: ['밖에 못 나가니 애들 불만이 쌓입니다.', '규정대로 내보냅니다.', '애들은 좋아하지만 군기가 조금 풀리고, 늦게 복귀하는 애가 나올 수 있습니다.'] },
+    desc: ['밖에 못 나가니 애들 불만이 쌓입니다. 대신 자리를 지키는 병력이 많아 군기는 섭니다.', '규정대로 내보냅니다.', '애들은 좋아하지만 군기가 조금 풀리고, 늦게 복귀하는 애가 나올 수 있습니다.'] },
   { id: 'reward', name: '상벌', options: ['징계 중심', '균형', '포상 중심'], def: 1,
     desc: ['군기는 잡히지만 불만이 안에서 곪습니다.', '잘하면 상, 잘못하면 벌입니다.', '성취감이 꾸준히 오르지만 군기가 조금 풀립니다.'] },
   { id: 'food', name: '급식', options: ['절약', '보통', '특식 강화'], def: 1,
@@ -2074,7 +2074,7 @@ const POLICIES = [
   { id: 'recruit', name: '신병 관리', options: ['알아서', '보통', '집중 관리'], def: 1,
     desc: ['간부들 일은 줄지만 신병들이 힘들어합니다.', '규정대로 챙깁니다.', '신병이 빨리 적응합니다. 대신 간부들 일이 늘어 지휘 통솔이 조금 떨어집니다.'] },
   { id: 'talk', name: '소통', options: ['폐쇄형', '보통', '개방형'], def: 1,
-    desc: ['문제가 위로 안 올라와서 안에서 곪습니다.', '상담하고 마음의 편지를 규정대로 운영합니다.', '곪은 문제가 빨리 풀립니다. 대신 보고가 늘어 점검 점수가 조금 내려갑니다.'] },
+    desc: ['문제가 위로 안 올라와서 점검은 무난하지만, 안에서 곪습니다.', '상담하고 마음의 편지를 규정대로 운영합니다.', '곪은 문제가 빨리 풀립니다. 대신 보고가 늘어 점검 점수가 조금 내려갑니다.'] },
 ];
 
 // 간부 (기획안 12장). 이름과 인물은 모두 가상이다.
@@ -3762,8 +3762,8 @@ function nextSlot(t, gap = 720) {
 // 철책 습격(진돗개) 인원 허용 범위: 구간 b에서 3명 ~ 6+2b명 (32명까지). 난수·놓친 적 수가 흔들어도 이 안에 든다
 // 90라운드 뒤에는 아래 끝도 오른다 (구간마다 +2) · 위 끝 60명
 const raidRange = (no) => { const b = blockOf(Math.max(1, no)), hi = Math.min(b > BLOCKS ? 60 : 32, 6 + 2 * b); return [Math.min(hi, 3 + Math.max(0, b - BLOCKS) * 2), hi]; };
-// 90라운드 뒤 습격 적 한 명이 더 질겨지는 몫 (두 구간마다 +1)
-const raidHpBonus = (no) => Math.floor(Math.max(0, blockOf(Math.max(1, no)) - BLOCKS) / 2);
+// 90라운드 뒤 습격 적 한 명이 더 질겨지는 몫: 웨이브 한 명 체력의 10% (구간마다 1.12배로 오른다 → 말뚝박은인생이 언젠가 끝난다)
+const raidHpBonus = (no) => { const b = blockOf(Math.max(1, no)); return b <= BLOCKS ? 0 : Math.round(rowOf(b).u * 0.1); };
 
 return { SLOTS, PER_BLOCK, BLOCKS, FINAL_NO, ROUND_HOURS, FINAL_JOIN, NEED, TABLE, SLOT_K, blockOf, slotOf, isFinal, rowOf, roundPlan, nextSlot, raidRange, raidHpBonus };
 })();
@@ -4328,6 +4328,208 @@ function trickStep(u, dm) {
 
 return { stepAct, escapeWith, trickDamage, trickStep };
 })();
+// ===== src/cases.js =====
+__X["src/cases.js"] = (function () {
+'use strict';
+const { josa } = __X["src/korean.js"];
+// 사건 기록 (보고와 실제가 다른 일): 점호에서 시작된 질책이 간부가 돌아간 뒤 계급 순서대로 아래로 내려간다 (내리갈굼).
+// 당직 보고는 늘 "이상 없음"이다. 대대장이 무엇을 확인하느냐에 따라 알게 되는 것이 다르고,
+// 그날의 조치가 다음 주 점호·후임의 면담 반응·재발 여부·전역 소감으로 돌아온다.
+//   1) 아침: '당직 보고' 카드 — 보고대로 처리 / 관련 병사를 따로 면담 / 불시 순찰
+//   2) 면담·순찰로 드러나면: '조치' 카드 — 징계·분리 / 분대장 훈계 / 덮기
+//   3) 일주일 뒤: '후속 점호' — 재발했는가, 그 이병은 이제 무슨 말을 하는가
+// 표현은 저장소 규칙대로 말과 분위기까지만 (cast.js 머리말: 가혹행위는 그리지 않는다).
+// 고정 해시만 쓴다: 부대 난수 순서를 건드리지 않고, 같은 저장을 불러오면 같은 일이 같은 날 일어난다.
+
+
+const clamp = (v, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, v));
+const h = (a, b) => { const n = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return n - Math.floor(n); };
+const live = (w) => w.soldiers.filter((s) => !s.gone && !s.leaving && !s.mine && !s.castKey); // 내 병사·우리 분대는 따로 이야기가 있다
+const RK = ['이병', '일병', '상병', '병장'];
+const nm = (w, id) => { const s = w.soldier(id); return s ? `${RK[s.rank] || ''} ${s.name}` : '전역한 병사'; };
+const CASE_GAP = 7; // 같은 일이 짧은 간격으로 되풀이되지 않게 (게임 날 = 복무 주)
+// 다음 주 재발 확률: 무엇을 했느냐에 따라
+const RECUR = { believed: 0.6, patrolMiss: 0.3, scolded: 0.35, disciplined: 0.1, buried: 0.7 };
+const RECUR_SLEEP = { believed: 0.5, patrolMiss: 0.3, disciplined: 0.3, adjusted: 0.08, buried: 0.6 }; // 졸음은 원인(근무 편성)을 풀어야 멎는다
+// 생기는 확률 (하루에 한 번, 저녁 점호 뒤): 곪은 정도(Z)와 악습 방침이 키운다
+const caseChance = (w) => 0.02 + Math.min(0.12, (w.Z || 0) / 500) + 0.04 * (w.policy?.abuse || 0);
+
+const mem = (w, id, m) => { const s = w.soldier(id); if (s) (s.mem ??= []).push({ ...m, week: w.week }); };
+
+// 하루에 한 번 (events.weeklyEvents): 새 사건이 생기거나, 일주일 지난 사건의 후속 점호가 온다
+function casesWeekly(w) {
+  w.cases ??= [];
+  const due = w.cases.find((c) => !c.followed && c.followAt != null && w.week >= c.followAt);
+  if (due) { rollFollow(w, due); due.followed = true; w.addLog(`후속 점검 (${due.week}일째 일): ${followLine(w, due)}`, due.recurred ? 'warn' : 'event'); } // 카드로 멈추지 않고 상황일지·사건 기록에만 (결정할 게 없는 확인이라)
+  if (w.awaitingUnit || w.week < 3 || w.caseOpen || w.week < (w.next.caseAt ?? 0)) return;
+  const roll = h(w.week + 7, (w.seed || 1) * 3 + w.cases.length);
+  if (roll >= caseChance(w) + sleepChance(w)) return;
+  const last = w.cases.at(-1)?.kind || 'chain', canSleep = (w.posts || []).some((p) => (p.guards || []).length >= 2);
+  if (last === 'chain' && canSleep) makeSleep(w); else if (!makeCase(w) && canSleep) makeSleep(w); // 같은 종류가 잇달아 나오지 않게 번갈아
+}
+// 근무가 몰리거나 잠이 모자라면 초소에서 존다: 병사가 직접 작업하면 낮에 차출되고, 엄격한 점호는 잠을 깎는다
+const sleepChance = (w) => (w.policy?.work === 0 ? 0.02 : 0) + (w.policy?.rollcall === 2 ? 0.02 : 0) + (w.policy?.train === 2 ? 0.01 : 0);
+// 사건 하나를 만든다 (시험·개발용으로도 부른다): 이병 하나, 상병 이상 하나, 사이의 일병 하나, 본 사람 둘
+function makeCase(w) {
+  w.cases ??= [];
+  const ss = live(w), low = ss.filter((s) => s.rank === 0), mid = ss.filter((s) => s.rank === 1), top = ss.filter((s) => s.rank >= 2);
+  if (!low.length || !top.length) return false;
+  const pick = (arr, k) => arr[Math.floor(h(w.week, k) * arr.length)];
+  const victim = pick(low, 11), perp = pick(top, 13), relay = mid.length ? pick(mid, 17) : null;
+  const wit = ss.filter((s) => ![victim, perp, relay].includes(s) && s.rank <= 2).sort((a, b) => h(a.id, w.week) - h(b.id, w.week)).slice(0, 2);
+  const c = { id: (w.caseSeq = (w.caseSeq || 0) + 1), week: w.week, victim: victim.id, perp: perp.id, relay: relay?.id ?? null, wit: wit.map((s) => s.id), status: 'reported', known: 'none', recurred: false };
+  w.cases.push(c); w.caseOpen = c.id; w.caseNow = c.id; w.next.caseAt = w.week + CASE_GAP;
+  w.Z = (w.Z || 0) + 3; victim.happy = clamp(victim.happy - 6);
+  mem(w, victim.id, { k: 'chainVictim', case: c.id }); mem(w, perp.id, { k: 'chainPerp', case: c.id }); if (relay) mem(w, relay.id, { k: 'chainRelay', case: c.id });
+  for (const s of wit) mem(w, s.id, { k: 'chainWitness', case: c.id });
+  w.eventQueue.unshift('caseReport'); // 아침 보고는 미루지 않는다
+  return true;
+}
+// 근무일지 허위: 새벽 초소 근무자 둘이 번갈아 졸았다. 근무일지는 '이상 없음'. 원인은 그날의 방침에서 나온다
+function makeSleep(w) {
+  w.cases ??= [];
+  const ps = (w.posts || []).filter((p) => (p.guards || []).length >= 2); if (!ps.length) return false;
+  const p = ps[Math.floor(h(w.week, 23) * ps.length)], [g1, g2] = p.guards;
+  const cause = w.policy?.work === 0 ? 'work' : w.policy?.rollcall === 2 ? 'rollcall' : 'shift';
+  const c = { id: (w.caseSeq = (w.caseSeq || 0) + 1), kind: 'sleep', week: w.week, post: p.id, g1, g2, victim: g2, perp: g1, relay: null, wit: [], cause, status: 'reported', known: 'none', recurred: false };
+  w.cases.push(c); w.caseOpen = c.id; w.caseNow = c.id; w.next.caseAt = w.week + CASE_GAP;
+  for (const id of [g1, g2]) mem(w, id, { k: 'sleepGuard', case: c.id });
+  w.eventQueue.unshift('sleepReport');
+  return true;
+}
+const CAUSE = { work: '낮에 작업에 차출돼 쉬지 못하고 근무에 올라갔습니다 (작업 방침: 병사가 직접)', rollcall: '엄격한 점호로 잠이 모자란 채 새벽 근무에 섰습니다 (점호 방침: 엄격)', shift: '근무가 한 사람에게 몰려 사흘째 새벽 근무였습니다' };
+// 졸음 근무가 남아 있는 초소: 그 초소 사격 솜씨가 준다 (turret.postSupport가 본다)
+const sleepyPost = (w, pid) => w.sleepy && w.sleepy.post === pid && w.week < w.sleepy.until;
+const cur = (w) => (w.cases || []).find((c) => c.id === w.caseNow);
+const truth = (w, c, full) => {
+  const v = nm(w, c.victim), p = nm(w, c.perp), r = c.relay != null ? nm(w, c.relay) : null;
+  const top = `저녁 점호 때 ${josa(p, '이/가')} 관물대 정리로 당직사관에게 지적받았습니다. 소등 뒤 ${r ? `${josa(p, '은/는')} ${josa(r, '을/를')} 화장실로 불러 "애들 교육 똑바로 시켜라"고 다그쳤고, ${josa(r, '은/는')}` : `${josa(p, '은/는')}`} ${josa(v, '을/를')} 새벽 한 시까지 관물대 앞에 세워 각을 다시 잡게 하고 말꼬리를 잡았습니다`;
+  return full ? `${top}. ${c.wit.length ? `같은 생활관 ${c.wit.map((id) => nm(w, id)).join('·')}은 다 들었지만 아무 말도 하지 않았습니다.` : ''} 당직 보고에는 한 줄도 없었습니다.` : `소등 뒤 ${josa(r || p, '이/가')} ${josa(v, '을/를')} 관물대 앞에 세워 두고 있는 것을 순찰이 봤습니다. 누가 시켰는지는 다들 모른다고 합니다.`;
+};
+
+const CASE_CARDS = {
+  caseReport: {
+    title: '당직 보고: 점호 이상 없음', def: 0,
+    text: (w) => { const c = cur(w); if (!c) return ''; return `어젯밤 당직사관 보고서: "21:30 점호 실시, 인원 이상 없음, 특이사항 없음." 그런데 아침 식당에서 ${josa(nm(w, c.victim), '이/가')} 밥을 거의 남겼고, 눈이 벌겋더라는 말이 행정반에서 돌았습니다.${(w.Z || 0) >= 30 ? ' 요즘 소원수리함이 유난히 비어 있습니다.' : ''}`; },
+    options: [
+      { label: '보고대로 처리한다', desc: '간부 시간이 들지 않습니다. 보고서에 없는 일은 보이지 않습니다.' },
+      { label: '관련 병사들을 따로따로 면담한다', desc: '300만 원과 간부 반나절이 듭니다 (오늘 훈련 성과가 조금 줄어듭니다). 누가 무엇을 했고 누가 알았는지 드러날 수 있습니다.' },
+      { label: '오늘 밤 생활관 불시 순찰을 돈다', desc: '돈은 들지 않지만 생활관 전체가 잠을 설칩니다. 현장을 볼 수도, 못 볼 수도 있습니다.' },
+    ],
+    resolve(w, i) {
+      const c = cur(w); if (!c) return [];
+      if (i === 0) { c.status = 'believed'; c.followAt = w.week + 7; w.caseOpen = null; return ['당직 보고대로 처리했습니다. 행정반은 조용합니다.']; }
+      if (i === 1) {
+        w.budget -= 300; for (const s of w.soldiers) if (!s.gone) s.A = clamp(s.A - 1);
+        c.known = 'full'; w.caseNow = c.id; w.eventQueue.unshift('caseAction');
+        for (const id of c.wit) { const s = w.soldier(id); if (s) s.happy = clamp(s.happy + 2); } // 말할 기회가 생겼다
+        return [`따로따로 면담했습니다. ${truth(w, c, true)}`];
+      }
+      for (const s of w.soldiers) if (!s.gone) { s.needs && (s.needs.energy = clamp(s.needs.energy - 8)); s.D = clamp(s.D + 1); }
+      if (h(c.id, w.week + 3) < 0.5) { c.known = 'partial'; w.eventQueue.unshift('caseAction'); return [`불시 순찰: ${truth(w, c, false)}`]; }
+      c.status = 'patrolMiss'; c.followAt = w.week + 7; w.caseOpen = null;
+      return ['불시 순찰을 돌았지만 다들 자는 척했습니다. 다만 순찰이 돈다는 소문은 금방 퍼졌습니다.'];
+    },
+  },
+  caseAction: {
+    title: '드러난 일: 어떻게 조치하나', def: 1,
+    text: (w) => { const c = cur(w); if (!c) return ''; return c.known === 'full' ? `${josa(nm(w, c.perp), '이/가')} 시작했고${c.relay != null ? ` ${josa(nm(w, c.relay), '이/가')} 아래로 내렸습니다` : ''}. ${josa(nm(w, c.victim), '은/는')} "괜찮습니다"만 되풀이합니다. 누구까지 책임을 물을지 정해야 합니다.` : `순찰에 걸린 건 ${josa(nm(w, c.relay ?? c.perp), '이/가')} ${josa(nm(w, c.victim), '을/를')} 세워 둔 장면뿐입니다. 그 위에 누가 있는지는 모릅니다.`; },
+    options: (w) => { const c = cur(w), full = c?.known === 'full'; return [
+      { label: full ? '시작한 선임까지 징계하고 생활관을 분리한다' : '걸린 병사를 징계한다', desc: full ? '군기가 서고 곪은 것(악습)이 크게 줄어듭니다. 징계받은 둘은 마음이 상하고, 그 생활관은 한동안 어수선합니다.' : '걸린 사람만 책임집니다. 위에서 시킨 사람은 그대로입니다.' },
+      { label: '분대장에게 훈계하도록 맡긴다', desc: '조용히 끝납니다. 다시 일어날 수 있습니다.' },
+      { label: '부대 밖으로 새지 않게 덮는다', desc: '오늘은 조용합니다. 곪은 것이 커지고, 밖으로 새면 감찰이 옵니다.' },
+    ]; },
+    resolve(w, i) {
+      const c = cur(w); if (!c) return []; w.caseOpen = null; c.followAt = w.week + 7;
+      const v = w.soldier(c.victim), p = w.soldier(c.perp), r = c.relay != null ? w.soldier(c.relay) : null;
+      if (i === 0) {
+        c.status = c.known === 'full' ? 'disciplined' : 'scolded'; // 위를 못 잡으면 훈계와 다를 바 없다
+        const who = c.known === 'full' ? [p, r] : [r || p];
+        for (const s of who) if (s) { s.happy = clamp(s.happy - 10); s.D = clamp(s.D + 4); }
+        if (v) { v.happy = clamp(v.happy + (c.known === 'full' ? 8 : 3)); v.A = clamp(v.A + 3); }
+        w.Z = Math.max(0, (w.Z || 0) - (c.known === 'full' ? 15 : 5));
+        return [c.known === 'full' ? `${josa(nm(w, c.perp), '와/과')} ${c.relay != null ? `${nm(w, c.relay)} ` : ''}징계, 생활관을 나눴습니다. 그날 저녁 점호는 유난히 짧았습니다.` : `${josa(nm(w, c.relay ?? c.perp), '을/를')} 징계했습니다. 생활관에서는 "위는 그대로"라는 말이 돕니다.`];
+      }
+      if (i === 1) { c.status = 'scolded'; w.Z = Math.max(0, (w.Z || 0) - 4); if (v) v.happy = clamp(v.happy + 2); return ['분대장이 생활관을 모아 놓고 한마디 했습니다. 다들 "알겠습니다"라고 했습니다.']; }
+      c.status = 'buried'; w.Z = (w.Z || 0) + 10; if (v) { v.grudge = Math.min(40, (v.grudge || 0) + 12); }
+      if (h(c.id, 99) < 0.4 && !w.leakAt) w.leakAt = w.week + 4 + (c.id % 4); // 덮은 일은 밖으로 샌다 (events.js 폭로)
+      return ['없던 일로 했습니다. 당직 보고는 계속 "이상 없음"입니다.'];
+    },
+  },
+  sleepReport: {
+    title: '당직 보고: 근무 이상 없음', def: 0,
+    text: (w) => { const c = cur(w); if (!c) return ''; return `${c.post}초소 근무일지: "02:00~04:00 근무 이상 없음, 특이사항 없음." 그런데 새벽에 그 초소 무전 응답이 두 번 늦었다는 말이 상황실에서 나왔습니다.`; },
+    options: [
+      { label: '근무일지대로 처리한다', desc: '아무것도 들이지 않습니다. 정말 졸았다면 그 초소는 한동안 제대로 못 봅니다.' },
+      { label: '근무자 둘을 따로 면담하고 무전 기록과 맞춰 본다', desc: '200만 원과 간부 시간이 듭니다. 왜 그랬는지까지 드러납니다.' },
+      { label: '오늘 새벽 초소 불시 점검을 나간다', desc: '돈은 안 들지만 간부가 밤을 샙니다 (군기 +1). 현장을 볼 수도, 못 볼 수도 있습니다.' },
+    ],
+    resolve(w, i) {
+      const c = cur(w); if (!c) return [];
+      if (i === 0) { c.status = 'believed'; c.followAt = w.week + 7; w.caseOpen = null; w.sleepy = { post: c.post, until: w.week + 7 }; return ['근무일지대로 처리했습니다.']; }
+      if (i === 1) { w.budget -= 200; c.known = 'full'; w.eventQueue.unshift('sleepAction'); return [`면담과 무전 기록을 맞춰 봤습니다. ${josa(nm(w, c.g1), '와/과')} ${josa(nm(w, c.g2), '이/가')} 번갈아 졸았습니다. ${CAUSE[c.cause]}.`]; }
+      for (const s of w.soldiers) if (!s.gone) s.D = clamp(s.D + 1);
+      if (h(c.id, w.week + 5) < 0.55) { c.known = 'full'; w.eventQueue.unshift('sleepAction'); return [`불시 점검: ${c.post}초소에서 ${josa(nm(w, c.g2), '이/가')} 철모를 쓴 채 졸고 있었습니다. ${CAUSE[c.cause]}.`]; }
+      c.status = 'patrolMiss'; c.followAt = w.week + 7; w.caseOpen = null;
+      return ['불시 점검을 나갔지만 다들 눈을 뜨고 있었습니다. 점검이 돈다는 소문은 퍼졌습니다.'];
+    },
+  },
+  sleepAction: {
+    title: '졸음 근무: 어떻게 조치하나', def: 1,
+    text: (w) => { const c = cur(w); if (!c) return ''; return `${c.post}초소 ${josa(nm(w, c.g1), '와/과')} ${nm(w, c.g2)}. ${CAUSE[c.cause]}. 둘만 탓할 일인지 정해야 합니다.`; },
+    options: [
+      { label: '규정대로 징계한다', desc: '군기가 섭니다. 둘은 마음이 상하고, 원인이 그대로라 다시 일어날 수 있습니다.' },
+      { label: '근무 편성을 다시 짠다 (300만)', desc: '근무가 몰리지 않게 나눕니다. 원인이 풀려 다시 일어나기 어렵습니다. 방침(작업·점호)도 함께 살펴보십시오.' },
+      { label: '없던 일로 한다', desc: '오늘은 조용합니다. 그 초소는 한동안 제대로 못 봅니다.' },
+    ],
+    resolve(w, i) {
+      const c = cur(w); if (!c) return []; w.caseOpen = null; c.followAt = w.week + 7;
+      const a = w.soldier(c.g1), b = w.soldier(c.g2);
+      if (i === 0) { c.status = 'disciplined'; for (const s of [a, b]) if (s) { s.happy = clamp(s.happy - 8); s.D = clamp(s.D + 4); } return [`${josa(nm(w, c.g1), '와/과')} ${josa(nm(w, c.g2), '을/를')} 징계했습니다. 근무일지 쓰는 손이 다들 조심스러워졌습니다.`]; }
+      if (i === 1) { c.status = 'adjusted'; w.budget -= 300; for (const s of [a, b]) if (s?.needs) { s.needs.energy = clamp(s.needs.energy + 30); s.happy = clamp(s.happy + 3); } return ['근무 편성을 다시 짰습니다. 새벽 근무가 한 사람에게 몰리지 않습니다.']; }
+      c.status = 'buried'; w.sleepy = { post: c.post, until: w.week + 7 };
+      return ['없던 일로 했습니다. 근무일지는 계속 "이상 없음"입니다.'];
+    },
+  },
+  caseFollow: {
+    title: '후속 점호', def: 0,
+    text: (w) => { const c = cur(w); if (!c) return ''; return `${c.week}일째 그 일 이후 일주일. ${followLine(w, c)}`; },
+    options: [{ label: '기록해 둔다', desc: '사건 기록에 남습니다 (부대 현황 → 사건 기록).' }],
+    resolve(w) { const c = cur(w); if (c) c.followed = true; return []; },
+  },
+};
+// 일주일 뒤: 재발 여부는 그날의 조치로 정해진 확률을 고정 해시로 한 번 굴린다 (불러와도 같다)
+function rollFollow(w, c) {
+  if (c.rolled) return; c.rolled = true; c.recurred = h(c.id, 777) < ((c.kind === 'sleep' ? RECUR_SLEEP : RECUR)[c.status] ?? 0.5);
+  if (c.kind === 'sleep') { if (c.recurred) w.sleepy = { post: c.post, until: w.week + 7 }; return; }
+  const v = w.soldier(c.victim);
+  if (c.recurred) { if (v) { v.happy = clamp(v.happy - 8); v.grudge = Math.min(40, (v.grudge || 0) + 6); } w.Z = (w.Z || 0) + 6; mem(w, c.victim, { k: 'chainAgain', case: c.id }); }
+  else if (v) v.happy = clamp(v.happy + 3);
+}
+function followLine(w, c) {
+  if (c.kind === 'sleep') return c.recurred ? `${c.post}초소에서 새벽 무전 응답이 또 늦었습니다. 근무일지는 여전히 "이상 없음"입니다. (그 초소 사격이 한 주 더 무딥니다)` : `${c.post}초소 새벽 무전 응답이 제때 옵니다.${c.status === 'adjusted' ? ' 근무가 고르게 돌아갑니다.' : ''}`;
+  const vn = nm(w, c.victim);
+  const voice = c.recurred ? (c.status === 'buried' ? '"말해 봤자 달라지는 게 없지 않습니까."' : '"…괜찮습니다."') : (c.status === 'disciplined' ? '"요즘은 잘 잡니다. 감사합니다."' : c.status === 'scolded' ? '"조금 나아졌습니다. 아직 눈치는 봅니다."' : '"그냥… 지냅니다."');
+  return `${c.recurred ? '같은 생활관에서 비슷한 일이 또 있었다는 말이 나왔습니다. ' : '그 뒤로 비슷한 일은 들리지 않습니다. '}${josa(vn, '은/는')} 면담에서 이렇게 말했습니다: ${voice}`;
+}
+
+// 전역 소감에 남는 한 줄: 겪은 일·한 일·본 일 가운데 가장 무거운 것 (없으면 null)
+function memoryLine(w, s) {
+  const m = s.mem || [], c = (id) => (w.cases || []).find((x) => x.id === id);
+  const find = (k) => m.filter((x) => x.k === k).map((x) => ({ ...x, c: c(x.case) })).at(-1);
+  const v = find('chainVictim'), again = find('chainAgain'), p = find('chainPerp'), r = find('chainRelay'), wi = find('chainWitness'), hero = find('pushHero'), hurt = find('hurt');
+  if (v) { const st = v.c?.status; if (again) return '이병 때 일은 두 번째부터는 아무한테도 말 안 했습니다.'; if (st === 'disciplined') return '이병 때 그 밤, 대대장님이 따로 불러 들어 주셔서 버틸 수 있었습니다.'; if (st === 'buried' || st === 'believed') return '이병 때 일은 보고서엔 "이상 없음"으로 남았겠죠. 저는 다 기억합니다.'; return '이병 때 일은… 이제 그냥 지나간 일로 하겠습니다.'; }
+  if (p) return p.c?.status === 'disciplined' ? '그때 징계받은 거, 그땐 억울했는데 지금은 받을 만했다고 생각합니다.' : '저도 그렇게 배웠으니까요. 후임들은 다르게 지냈으면 합니다.';
+  if (r) return '위에서 내려온 걸 아래로 내린 게 저였습니다. 그게 제일 마음에 걸립니다.';
+  if (wi) return wi.c?.status === 'disciplined' ? '그날 밤 말 못 한 게 걸렸는데, 면담 때라도 말해서 다행입니다.' : '그날 밤 알면서 말 못 한 게 아직 걸립니다.';
+  const sg = find('sleepGuard'); if (sg) { const st = sg.c?.status; if (st === 'adjusted') return '근무가 너무 몰리던 때, 대대장님이 편성을 바꿔 주셔서 버텼습니다.'; if (st === 'disciplined') return '초소에서 졸다 징계받은 날 이후로, 근무 때 한 번도 안 졸았습니다.'; return '새벽 초소에서 졸던 밤이 몇 번 있었습니다. 근무일지엔 다 "이상 없음"이죠.'; }
+  if (hero) return `총공세 날 철책에서 ${hero.n}명 막아 낸 건 평생 얘깃거리입니다.`;
+  if (hurt) return '진돗개 때 다친 데가 아직 비 오면 쑤십니다. 그래도 다 같이 살아 나왔습니다.';
+  return null;
+}
+
+return { CASE_GAP, RECUR, RECUR_SLEEP, caseChance, casesWeekly, sleepChance, makeCase, makeSleep, CAUSE, sleepyPost, CASE_CARDS, memoryLine };
+})();
 // ===== src/turret.js =====
 __X["src/turret.js"] = (function () {
 'use strict';
@@ -4343,10 +4545,12 @@ const { pace, sw } = __X["src/pace.js"];
 const { pk, myActive, addMerit, MY_R, MY_ACC } = __X["src/perks.js"];
 const { threatK, stepBrain, guardDamage, noteHit, officerDown } = __X["src/brain.js"];
 const { showWeeks, realWeek } = __X["src/pace.js"];
+const { sleepyPost } = __X["src/cases.js"];
 // 초소 방어 무기 (디펜스 타워): 철책 초소마다 무기 하나를 설치하고 3단계까지 올린다. 1차 방어선.
 // 근무 중인 초병 2명이 쏜다: 사람이 없으면 못 쏘고, 사기가 높을수록 잘 맞힌다 (철조망만 사람 없이도 적을 붙잡는다).
 // 쏘는 때: 언제나. 철책 밖을 도는 적 지대 무리가 사거리에 들면 쏜다 (잡으면 사단 포상금). 모인 무리를 줄여 놓으면 넘어오는 수가 준다.
 // 침투가 시작되면 넘어오는 적을 먼저 쏜다.
+
 
 
 
@@ -4609,6 +4813,7 @@ function postSupport(w, p) {
     if (f) { gap /= 1 + 0.08 * f; lines.push(`화력 개량 ${f}단계: 연사 +${8 * f}%`); }
     if (o) { range += 0.5 * o; acc *= 1 + 0.04 * o; lines.push(`관측 장비 ${o}단계: 사거리 +${(0.5 * o).toFixed(1)}칸 · 명중 +${4 * o}%`); }
     if (a) lines.push(`무인 사격체계 ${a}단계: 근무자 없이 솜씨 ×${AUTO_K[a]}`); }
+  if (sleepyPost(w, p.id)) { acc *= 0.65; lines.push(`근무자 졸음 (근무일지 "이상 없음"): 명중 65% · ${Math.max(0, w.sleepy.until - w.week)}일 남음 — 사건 기록을 확인하십시오`); } // cases.js 근무일지 허위
   if ((p.smokeUntil || 0) > w.t) { const eye = A('night') >= 2 || (w.posts || []).some((q) => q.tur?.type === 'light' && !q.broken && Math.hypot(q.x - p.x, q.y - p.y) < 10); acc *= eye ? 0.85 : 0.55; range -= eye ? 0.5 : 2.5; lines.push(eye ? '적 연막: 열상으로 뚫어 보는 중 (명중 85%)' : '적 연막: 명중 55% · 사거리 −2.5칸 (둘레에 탐조등·열상 초소가 있으면 뚫어 봅니다)'); }
   return { acc, range, gap, wire, lines };
 }
@@ -5674,6 +5879,7 @@ function spawnRaid(w, opts = {}) {
   if (hb && opts.leak) { bx = hb.bx; by = hb.by; n = Math.max(1, Math.min(n, hb.units.length)); } // 월책: 철책에 닿은 놈들만 넘어온다
   else if (hb?.spread) { bx = hb.bx; by = hb.by; n = Math.max(3, Math.min(n, hb.units.length)); } // 총공세: 살아남은 놈만 넘어온다
   else if (hb) { bx = hb.bx; by = hb.by; n = Math.max(3, Math.ceil(n * 0.75), Math.min(n, hb.units.length)); } // 초소가 모인 무리를 줄이면 덜 넘어온다 (그래도 뒤에서 75%는 채워 온다) // 초소가 모인 무리를 줄여 놓았으면 그만큼 적게 넘어온다
+  if (w.endless?.on && !opts.leak) n = Math.max(n, raidRange(w.waveNo || 1)[0]); // 말뚝박은인생: 남은 적이 적어도 습격은 구간 최소 인원 밑으로 줄지 않는다 (안 그러면 끝이 오지 않았다)
   const targets = [...w.buildings.values()].filter((b) => b.type !== 'gate' && b.type !== 'barracks' && b.type !== 'bunker' && !b.damaged); // 노리는 건 시설
   const pick = targets.sort((a, b) => Math.hypot(a.x - bx, a.y - by) - Math.hypot(b.x - bx, b.y - by))[Math.min(2, targets.length - 1)];
   const tx = pick ? pick.x + pick.w / 2 : w.W / 2, ty = pick ? pick.y + pick.h / 2 : w.H / 2;
@@ -6844,11 +7050,11 @@ const MISSIONS = [
     how: '초소 탑을 눌러 무기를 4단계까지 증설하십시오. 4단계는 지휘통제실 2단계가 있어야 열립니다. 적 출입구 가까운 초소부터 올리십시오.',
     why: '총공세는 적 출입구 옆 초소부터 덮칩니다.',
     check: (w) => !w.fresh || (w.posts || []).filter((p) => p.tur && p.tur.lv >= 4).length >= 3 },
-  { ch: 3, title: '내 병사 웃으며 전역시키기', reward: 0, wait: true,
+  { ch: 3, title: '내 병사 웃으며 전역시키기', reward: 0, wait: true, eta: (w) => { const s = w.myId != null && w.soldier(w.myId); if (!s || s.gone) return '전역했습니다'; const n = Math.max(0, s.enlistWeek + w.serviceOf(s) - w.week); return `전역까지 ${n}일 (지금 행복 ${Math.round(s.happy)} · 성취 ${Math.round(s.A)})`; },
     how: (w) => `${w.myName ? josa(w.myName, '이/가') : '그 녀석이'} 전역하는 날 웃으면서 나가게 해 주십시오. 전역 만족도 70이 기준입니다.`,
     why: '행복도하고 성취감, 둘 다 챙겨야 웃으면서 나갑니다.',
     check: (w) => w.mySat !== undefined && w.mySat >= 70 },
-  { ch: 3, title: '진급 심사 받기', reward: 0, wait: true, crisis: 'promo',
+  { ch: 3, title: '진급 심사 받기', reward: 0, wait: true, crisis: 'promo', eta: (w) => { const n = realWeek(w, 86) - w.week; return n > 0 ? `심사 위원회까지 ${n}일` : '곧 심사 위원회가 열립니다'; },
     how: '임기 끝 무렵에 진급 심사 위원회가 열립니다. 임기 기록이 곧 점수입니다. 마지막 질문에 어떻게 답할지만 고르시면 됩니다.',
     why: '대대장님의 임기가 이름으로 남는 자리입니다.',
     check: (w) => !!w.flags.promoDone },
@@ -7391,150 +7597,6 @@ function pressureWeekly(w) {
 }
 
 return { PRESSURE_CARDS, pressureWeekly };
-})();
-// ===== src/cases.js =====
-__X["src/cases.js"] = (function () {
-'use strict';
-const { josa } = __X["src/korean.js"];
-// 사건 기록 (보고와 실제가 다른 일): 점호에서 시작된 질책이 간부가 돌아간 뒤 계급 순서대로 아래로 내려간다 (내리갈굼).
-// 당직 보고는 늘 "이상 없음"이다. 대대장이 무엇을 확인하느냐에 따라 알게 되는 것이 다르고,
-// 그날의 조치가 다음 주 점호·후임의 면담 반응·재발 여부·전역 소감으로 돌아온다.
-//   1) 아침: '당직 보고' 카드 — 보고대로 처리 / 관련 병사를 따로 면담 / 불시 순찰
-//   2) 면담·순찰로 드러나면: '조치' 카드 — 징계·분리 / 분대장 훈계 / 덮기
-//   3) 일주일 뒤: '후속 점호' — 재발했는가, 그 이병은 이제 무슨 말을 하는가
-// 표현은 저장소 규칙대로 말과 분위기까지만 (cast.js 머리말: 가혹행위는 그리지 않는다).
-// 고정 해시만 쓴다: 부대 난수 순서를 건드리지 않고, 같은 저장을 불러오면 같은 일이 같은 날 일어난다.
-
-
-const clamp = (v, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, v));
-const h = (a, b) => { const n = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return n - Math.floor(n); };
-const live = (w) => w.soldiers.filter((s) => !s.gone && !s.leaving && !s.mine && !s.castKey); // 내 병사·우리 분대는 따로 이야기가 있다
-const RK = ['이병', '일병', '상병', '병장'];
-const nm = (w, id) => { const s = w.soldier(id); return s ? `${RK[s.rank] || ''} ${s.name}` : '전역한 병사'; };
-const CASE_GAP = 5; // 같은 일이 짧은 간격으로 되풀이되지 않게 (게임 날 = 복무 주)
-// 다음 주 재발 확률: 무엇을 했느냐에 따라
-const RECUR = { believed: 0.6, patrolMiss: 0.3, scolded: 0.35, disciplined: 0.1, buried: 0.7 };
-// 생기는 확률 (하루에 한 번, 저녁 점호 뒤): 곪은 정도(Z)와 악습 방침이 키운다
-const caseChance = (w) => 0.03 + Math.min(0.12, (w.Z || 0) / 500) + 0.04 * (w.policy?.abuse || 0);
-
-const mem = (w, id, m) => { const s = w.soldier(id); if (s) (s.mem ??= []).push({ ...m, week: w.week }); };
-
-// 하루에 한 번 (events.weeklyEvents): 새 사건이 생기거나, 일주일 지난 사건의 후속 점호가 온다
-function casesWeekly(w) {
-  w.cases ??= [];
-  const due = w.cases.find((c) => !c.followed && c.followAt != null && w.week >= c.followAt);
-  if (due && !w.eventQueue.includes('caseFollow') && w.event?.id !== 'caseFollow') { rollFollow(w, due); w.caseNow = due.id; w.eventQueue.push('caseFollow'); return; }
-  if (w.awaitingUnit || w.week < 3 || w.caseOpen || w.week < (w.next.caseAt ?? 0)) return;
-  const roll = h(w.week + 7, (w.seed || 1) * 3 + w.cases.length);
-  if (roll >= caseChance(w)) return;
-  makeCase(w);
-}
-// 사건 하나를 만든다 (시험·개발용으로도 부른다): 이병 하나, 상병 이상 하나, 사이의 일병 하나, 본 사람 둘
-function makeCase(w) {
-  w.cases ??= [];
-  const ss = live(w), low = ss.filter((s) => s.rank === 0), mid = ss.filter((s) => s.rank === 1), top = ss.filter((s) => s.rank >= 2);
-  if (!low.length || !top.length) return;
-  const pick = (arr, k) => arr[Math.floor(h(w.week, k) * arr.length)];
-  const victim = pick(low, 11), perp = pick(top, 13), relay = mid.length ? pick(mid, 17) : null;
-  const wit = ss.filter((s) => ![victim, perp, relay].includes(s) && s.rank <= 2).sort((a, b) => h(a.id, w.week) - h(b.id, w.week)).slice(0, 2);
-  const c = { id: (w.caseSeq = (w.caseSeq || 0) + 1), week: w.week, victim: victim.id, perp: perp.id, relay: relay?.id ?? null, wit: wit.map((s) => s.id), status: 'reported', known: 'none', recurred: false };
-  w.cases.push(c); w.caseOpen = c.id; w.caseNow = c.id; w.next.caseAt = w.week + CASE_GAP;
-  w.Z = (w.Z || 0) + 3; victim.happy = clamp(victim.happy - 6);
-  mem(w, victim.id, { k: 'chainVictim', case: c.id }); mem(w, perp.id, { k: 'chainPerp', case: c.id }); if (relay) mem(w, relay.id, { k: 'chainRelay', case: c.id });
-  for (const s of wit) mem(w, s.id, { k: 'chainWitness', case: c.id });
-  w.eventQueue.unshift('caseReport'); // 아침 보고는 미루지 않는다
-}
-const cur = (w) => (w.cases || []).find((c) => c.id === w.caseNow);
-const truth = (w, c, full) => {
-  const v = nm(w, c.victim), p = nm(w, c.perp), r = c.relay != null ? nm(w, c.relay) : null;
-  const top = `저녁 점호 때 ${josa(p, '이/가')} 관물대 정리로 당직사관에게 지적받았습니다. 소등 뒤 ${r ? `${josa(p, '은/는')} ${josa(r, '을/를')} 화장실로 불러 "애들 교육 똑바로 시켜라"고 다그쳤고, ${josa(r, '은/는')}` : `${josa(p, '은/는')}`} ${josa(v, '을/를')} 새벽 한 시까지 관물대 앞에 세워 각을 다시 잡게 하고 말꼬리를 잡았습니다`;
-  return full ? `${top}. ${c.wit.length ? `같은 생활관 ${c.wit.map((id) => nm(w, id)).join('·')}은 다 들었지만 아무 말도 하지 않았습니다.` : ''} 당직 보고에는 한 줄도 없었습니다.` : `소등 뒤 ${josa(r || p, '이/가')} ${josa(v, '을/를')} 관물대 앞에 세워 두고 있는 것을 순찰이 봤습니다. 누가 시켰는지는 다들 모른다고 합니다.`;
-};
-
-const CASE_CARDS = {
-  caseReport: {
-    title: '당직 보고: 점호 이상 없음', def: 0,
-    text: (w) => { const c = cur(w); if (!c) return ''; return `어젯밤 당직사관 보고서: "21:30 점호 실시, 인원 이상 없음, 특이사항 없음." 그런데 아침 식당에서 ${josa(nm(w, c.victim), '이/가')} 밥을 거의 남겼고, 눈이 벌겋더라는 말이 행정반에서 돌았습니다.${(w.Z || 0) >= 30 ? ' 요즘 소원수리함이 유난히 비어 있습니다.' : ''}`; },
-    options: [
-      { label: '보고대로 처리한다', desc: '간부 시간이 들지 않습니다. 보고서에 없는 일은 보이지 않습니다.' },
-      { label: '관련 병사들을 따로따로 면담한다', desc: '300만 원과 간부 반나절이 듭니다 (오늘 훈련 성과가 조금 줄어듭니다). 누가 무엇을 했고 누가 알았는지 드러날 수 있습니다.' },
-      { label: '오늘 밤 생활관 불시 순찰을 돈다', desc: '돈은 들지 않지만 생활관 전체가 잠을 설칩니다. 현장을 볼 수도, 못 볼 수도 있습니다.' },
-    ],
-    resolve(w, i) {
-      const c = cur(w); if (!c) return [];
-      if (i === 0) { c.status = 'believed'; c.followAt = w.week + 7; w.caseOpen = null; return ['당직 보고대로 처리했습니다. 행정반은 조용합니다.']; }
-      if (i === 1) {
-        w.budget -= 300; for (const s of w.soldiers) if (!s.gone) s.A = clamp(s.A - 1);
-        c.known = 'full'; w.caseNow = c.id; w.eventQueue.unshift('caseAction');
-        for (const id of c.wit) { const s = w.soldier(id); if (s) s.happy = clamp(s.happy + 2); } // 말할 기회가 생겼다
-        return [`따로따로 면담했습니다. ${truth(w, c, true)}`];
-      }
-      for (const s of w.soldiers) if (!s.gone) { s.needs && (s.needs.energy = clamp(s.needs.energy - 8)); s.D = clamp(s.D + 1); }
-      if (h(c.id, w.week + 3) < 0.5) { c.known = 'partial'; w.eventQueue.unshift('caseAction'); return [`불시 순찰: ${truth(w, c, false)}`]; }
-      c.status = 'patrolMiss'; c.followAt = w.week + 7; w.caseOpen = null;
-      return ['불시 순찰을 돌았지만 다들 자는 척했습니다. 다만 순찰이 돈다는 소문은 금방 퍼졌습니다.'];
-    },
-  },
-  caseAction: {
-    title: '드러난 일: 어떻게 조치하나', def: 1,
-    text: (w) => { const c = cur(w); if (!c) return ''; return c.known === 'full' ? `${josa(nm(w, c.perp), '이/가')} 시작했고${c.relay != null ? ` ${josa(nm(w, c.relay), '이/가')} 아래로 내렸습니다` : ''}. ${josa(nm(w, c.victim), '은/는')} "괜찮습니다"만 되풀이합니다. 누구까지 책임을 물을지 정해야 합니다.` : `순찰에 걸린 건 ${josa(nm(w, c.relay ?? c.perp), '이/가')} ${josa(nm(w, c.victim), '을/를')} 세워 둔 장면뿐입니다. 그 위에 누가 있는지는 모릅니다.`; },
-    options: (w) => { const c = cur(w), full = c?.known === 'full'; return [
-      { label: full ? '시작한 선임까지 징계하고 생활관을 분리한다' : '걸린 병사를 징계한다', desc: full ? '군기가 서고 곪은 것(악습)이 크게 줄어듭니다. 징계받은 둘은 마음이 상하고, 그 생활관은 한동안 어수선합니다.' : '걸린 사람만 책임집니다. 위에서 시킨 사람은 그대로입니다.' },
-      { label: '분대장에게 훈계하도록 맡긴다', desc: '조용히 끝납니다. 다시 일어날 수 있습니다.' },
-      { label: '부대 밖으로 새지 않게 덮는다', desc: '오늘은 조용합니다. 곪은 것이 커지고, 밖으로 새면 감찰이 옵니다.' },
-    ]; },
-    resolve(w, i) {
-      const c = cur(w); if (!c) return []; w.caseOpen = null; c.followAt = w.week + 7;
-      const v = w.soldier(c.victim), p = w.soldier(c.perp), r = c.relay != null ? w.soldier(c.relay) : null;
-      if (i === 0) {
-        c.status = c.known === 'full' ? 'disciplined' : 'scolded'; // 위를 못 잡으면 훈계와 다를 바 없다
-        const who = c.known === 'full' ? [p, r] : [r || p];
-        for (const s of who) if (s) { s.happy = clamp(s.happy - 10); s.D = clamp(s.D + 4); }
-        if (v) { v.happy = clamp(v.happy + (c.known === 'full' ? 8 : 3)); v.A = clamp(v.A + 3); }
-        w.Z = Math.max(0, (w.Z || 0) - (c.known === 'full' ? 15 : 5));
-        return [c.known === 'full' ? `${josa(nm(w, c.perp), '와/과')} ${c.relay != null ? `${nm(w, c.relay)} ` : ''}징계, 생활관을 나눴습니다. 그날 저녁 점호는 유난히 짧았습니다.` : `${josa(nm(w, c.relay ?? c.perp), '을/를')} 징계했습니다. 생활관에서는 "위는 그대로"라는 말이 돕니다.`];
-      }
-      if (i === 1) { c.status = 'scolded'; w.Z = Math.max(0, (w.Z || 0) - 4); if (v) v.happy = clamp(v.happy + 2); return ['분대장이 생활관을 모아 놓고 한마디 했습니다. 다들 "알겠습니다"라고 했습니다.']; }
-      c.status = 'buried'; w.Z = (w.Z || 0) + 10; if (v) { v.grudge = Math.min(40, (v.grudge || 0) + 12); }
-      if (h(c.id, 99) < 0.4 && !w.leakAt) w.leakAt = w.week + 4 + (c.id % 4); // 덮은 일은 밖으로 샌다 (events.js 폭로)
-      return ['없던 일로 했습니다. 당직 보고는 계속 "이상 없음"입니다.'];
-    },
-  },
-  caseFollow: {
-    title: '후속 점호', def: 0,
-    text: (w) => { const c = cur(w); if (!c) return ''; return `${c.week}일째 그 일 이후 일주일. ${followLine(w, c)}`; },
-    options: [{ label: '기록해 둔다', desc: '사건 기록에 남습니다 (부대 현황 → 사건 기록).' }],
-    resolve(w) { const c = cur(w); if (c) c.followed = true; return []; },
-  },
-};
-// 일주일 뒤: 재발 여부는 그날의 조치로 정해진 확률을 고정 해시로 한 번 굴린다 (불러와도 같다)
-function rollFollow(w, c) {
-  if (c.rolled) return; c.rolled = true; c.recurred = h(c.id, 777) < (RECUR[c.status] ?? 0.5);
-  const v = w.soldier(c.victim);
-  if (c.recurred) { if (v) { v.happy = clamp(v.happy - 8); v.grudge = Math.min(40, (v.grudge || 0) + 6); } w.Z = (w.Z || 0) + 6; mem(w, c.victim, { k: 'chainAgain', case: c.id }); }
-  else if (v) v.happy = clamp(v.happy + 3);
-}
-function followLine(w, c) {
-  const vn = nm(w, c.victim);
-  const voice = c.recurred ? (c.status === 'buried' ? '"말해 봤자 달라지는 게 없지 않습니까."' : '"…괜찮습니다."') : (c.status === 'disciplined' ? '"요즘은 잘 잡니다. 감사합니다."' : c.status === 'scolded' ? '"조금 나아졌습니다. 아직 눈치는 봅니다."' : '"그냥… 지냅니다."');
-  return `${c.recurred ? '같은 생활관에서 비슷한 일이 또 있었다는 말이 나왔습니다. ' : '그 뒤로 비슷한 일은 들리지 않습니다. '}${josa(vn, '은/는')} 면담에서 이렇게 말했습니다: ${voice}`;
-}
-
-// 전역 소감에 남는 한 줄: 겪은 일·한 일·본 일 가운데 가장 무거운 것 (없으면 null)
-function memoryLine(w, s) {
-  const m = s.mem || [], c = (id) => (w.cases || []).find((x) => x.id === id);
-  const find = (k) => m.filter((x) => x.k === k).map((x) => ({ ...x, c: c(x.case) })).at(-1);
-  const v = find('chainVictim'), again = find('chainAgain'), p = find('chainPerp'), r = find('chainRelay'), wi = find('chainWitness'), hero = find('pushHero'), hurt = find('hurt');
-  if (v) { const st = v.c?.status; if (again) return '이병 때 일은 두 번째부터는 아무한테도 말 안 했습니다.'; if (st === 'disciplined') return '이병 때 그 밤, 대대장님이 따로 불러 들어 주셔서 버틸 수 있었습니다.'; if (st === 'buried' || st === 'believed') return '이병 때 일은 보고서엔 "이상 없음"으로 남았겠죠. 저는 다 기억합니다.'; return '이병 때 일은… 이제 그냥 지나간 일로 하겠습니다.'; }
-  if (p) return p.c?.status === 'disciplined' ? '그때 징계받은 거, 그땐 억울했는데 지금은 받을 만했다고 생각합니다.' : '저도 그렇게 배웠으니까요. 후임들은 다르게 지냈으면 합니다.';
-  if (r) return '위에서 내려온 걸 아래로 내린 게 저였습니다. 그게 제일 마음에 걸립니다.';
-  if (wi) return wi.c?.status === 'disciplined' ? '그날 밤 말 못 한 게 걸렸는데, 면담 때라도 말해서 다행입니다.' : '그날 밤 알면서 말 못 한 게 아직 걸립니다.';
-  if (hero) return `총공세 날 철책에서 ${hero.n}명 막아 낸 건 평생 얘깃거리입니다.`;
-  if (hurt) return '진돗개 때 다친 데가 아직 비 오면 쑤십니다. 그래도 다 같이 살아 나왔습니다.';
-  return null;
-}
-
-return { CASE_GAP, RECUR, caseChance, casesWeekly, makeCase, CASE_CARDS, memoryLine };
 })();
 // ===== src/minigames/index.js =====
 __X["src/minigames/index.js"] = (function () {
@@ -10311,7 +10373,7 @@ class World {
     const avgD = avg((s) => s.D), hyg = avg((s) => s.needs.hygiene);
     const beds = bedsOf(this);
     const crowdPct = clamp((n / Math.max(1, beds) - 1) * 100);
-    const gun = Math.round(clamp(0.6 * avgD + 35 + (P.rollcall === 2 ? 5 : 0) - (P.talk === 2 ? 3 : 0)));
+    const gun = Math.round(clamp(0.6 * avgD + 35 + (P.rollcall === 2 ? 5 : 0) - (P.talk === 2 ? 3 : 0) + (P.talk === 0 ? 2 : 0))); // 폐쇄형: 위로 올라가는 보고가 적어 점검은 무난하다 (대신 안에서 곪는다)
     const room = Math.round(clamp(0.5 * hyg + 0.3 * avgD + 0.2 * (100 - crowdPct) + (P.rollcall === 2 ? 10 : 0) - (P.talk === 2 ? 3 : 0)));
     this.inspections.push((gun + room) / 2);
     if (this.inspections.length > 3) this.inspections.shift();
@@ -10383,7 +10445,7 @@ class World {
     const P = this.policy;
     const X = [0, 3, 8][P.abuse];
     const off = this.officers;
-    const L = off.reduce((a, o) => a + o.cmd, 0) / off.length - (P.recruit === 2 ? 2 : 0);
+    const L = off.reduce((a, o) => a + o.cmd, 0) / off.length - (P.recruit === 2 ? 2 : 0) + (P.recruit === 0 ? 2 : 0); // 신병을 알아서 두면 간부 손이 빈다
     const edu = off.reduce((a, o) => a + o.edu, 0) / off.length;
     let sumCP = 0, sumRel = 0, sumD = 0, sumA = 0, sumH = 0;
     for (const s of this.soldiers) {
@@ -10444,8 +10506,9 @@ class World {
       ['식사·잠·샤워·여가', 0.45 * (nbar - 70)],
       ['동료 관계', 0.2 * (s.rel - 60)],
       ['생활관 공간', 0.15 * (env - 100)],
-      ['휴대폰 방침', 0.2 * [-30, 0, 20][P.phone]],
-      ['외출·외박 방침', 0.2 * [-15, 0, 10][P.leave]],
+      ['휴대폰 방침', 0.2 * [-30, 0, 30][P.phone]],
+      ['외출·외박 방침', 0.2 * [-15, 0, 20][P.leave]],
+      ['훈련 강도 방침', [5, 0, -3][P.train]], // 느슨하면 덜 지치고, 강하면 지친다 (예전엔 느슨이 손해뿐이었다)
       ['사이버지식정보방', this.has('pc') ? 1.6 : 0],
       ['부대 환경 (쓰레기·낙엽 방치)', -Math.min(4, (this.litterLevel || 0) * 0.4)],
       ['종교 활동 (주말 예배·법회, 초코파이)', this.ofType('chapel').length ? 1.5 : 0],
@@ -10455,7 +10518,7 @@ class World {
       ['급식비 전용 (반찬이 줄었다)', this.lean > this.week ? -6 : 0],
       ['급식 방침', [-3, 0, 4][P.food]],
       ['작업 방침', [-2, 3][P.work]],
-      ['점호 방침', [2, 0, -4][P.rollcall]],
+      ['점호 방침', [5, 0, -4][P.rollcall]],
       ['악습', s.rank < 2 ? -1.8 * X : 0.4 * X],
       ['신병 관리 방침', this.week - s.enlistWeek < 2 ? [-5, 0, 6][P.recruit] : 0],
       ['악습 근절 반발', this.week <= this.backlashUntil && s.rank >= 2 ? -3 : 0],
@@ -10469,12 +10532,12 @@ class World {
     const P = this.policy;
     return [
       // 지휘 통솔은 evaluate()와 같은 식으로 바로 계산한다 (미리보기에 신병 관리 방침이 반영되게)
-      ['지휘 통솔', 0.5 * (this.officers.reduce((a, o) => a + o.cmd, 0) / this.officers.length - (P.recruit === 2 ? 2 : 0) - 60)],
+      ['지휘 통솔', 0.5 * (this.officers.reduce((a, o) => a + o.cmd, 0) / this.officers.length - (P.recruit === 2 ? 2 : 0) + (P.recruit === 0 ? 2 : 0) - 60)],
       ['훈련 강도 방침', 25 * ([2, 5, 6][P.train] - 5) / 5],
       ['용모 단정 (이발소)', this.ofType('barber').length ? 2 : 0],
       ['악습 (겉으로만 잡힌 군기)', 2 * [0, 3, 8][P.abuse]],
       ['점호 방침', [-6, 0, 6][P.rollcall]],
-      ['외출·외박 방침', [0, 0, -4][P.leave]],
+      ['외출·외박 방침', [3, 0, -4][P.leave]], // 통제하면 자리를 지키는 병력이 많다
       ['상벌 방침', [5, 0, -2][P.reward]],
       ['휴대폰 방침', [0, 0, -3][P.phone]],
     ];
@@ -18815,6 +18878,7 @@ const { ACT_NAME, TRICK_NAME, actOf, trickOf } = __X["src/roster.js"];
 const { animalSprite } = __X["src/sprites.js"];
 const { FOES, THEMES, CORNERS, upgradeFence, FENCE_UP, FENCE_NAME, pileSummary, pileText } = __X["src/horde.js"];
 const { raidRange } = __X["src/rounds.js"];
+const { CAUSE } = __X["src/cases.js"];
 const { garrisons, wavesToRaid, guardRoom } = __X["src/defense.js"];
 const { SPEAKERS, sceneById, resolveScene, fill, bond, reservedWhy } = __X["src/cast.js"];
 const { LV, lvOf, capOf, upkeepOf, upgradable, upgradeCost, upgradeGain, canUpgrade, upgradeBuilding, maxLv } = __X["src/levels.js"];
@@ -18830,6 +18894,7 @@ const { showWeeks } = __X["src/pace.js"];
 const { josa } = __X["src/korean.js"];
 const { KINDS, dispatchHunters } = __X["src/wildlife.js"];
 // 화면 위 UI: 상황판, 도구 상자, 클립보드, 상황일지 (기획안 16장).
+
 
 
 
@@ -19268,7 +19333,9 @@ ${BUILD_HINT[t.id] || ''}` : name + (t.key ? ` (${t.key})` : '');
     const cs = (w.cases || []).slice(-6).reverse(); if (!cs.length) return '';
     const RK = ['이병', '일병', '상병', '병장'], nm = (id) => { const s = w.soldier(id); return s ? `${RK[s.rank] || ''} ${esc(s.name)}${s.gone ? ' (전역)' : ''}` : '전역한 병사'; };
     const ST = { reported: '보고 받음', believed: '보고대로 처리 (확인 안 함)', patrolMiss: '순찰 · 못 봄', scolded: '분대장 훈계', disciplined: '징계 · 생활관 분리', buried: '덮음' };
+    ST.adjusted = '근무 편성 조정';
     const row = (c) => { const full = c.known === 'full', part = c.known === 'partial';
+      if (c.kind === 'sleep') { const after = c.rolled ? (c.recurred ? '일주일 뒤: 또 졸았다' : '일주일 뒤: 무전 응답 정상') : c.followAt != null ? `후속 점검 ${Math.max(0, c.followAt - w.week)}일 뒤` : ''; return `<div class="crow"><span><b>${c.week}일째 · ${c.post}초소 근무일지 · ${ST[c.status] || c.status}</b><br><small>${full ? `${nm(c.g1)}·${nm(c.g2)} 번갈아 졸음 — ${esc(CAUSE[c.cause] || '')}` : '근무일지 "이상 없음" · 새벽 무전 응답이 늦었다는 말만'}${after ? ` · ${after}` : ''}</small></span></div>`; }
       const who = full ? `${nm(c.perp)} → ${c.relay != null ? `${nm(c.relay)} → ` : ''}${nm(c.victim)} · 알고 있던 사람 ${c.wit.map(nm).join('·') || '없음'}` : part ? `${nm(c.relay ?? c.perp)} → ${nm(c.victim)} · 위에 누가 있는지 모름` : `당직 보고 "이상 없음" · ${nm(c.victim)}이 밥을 남겼다는 말만`;
       const after = c.rolled ? (c.recurred ? '일주일 뒤: 또 있었다' : '일주일 뒤: 조용하다') : c.followAt != null ? `후속 점호 ${Math.max(0, c.followAt - w.week)}일 뒤` : '';
       return `<div class="crow"><span><b>${c.week}일째 · ${ST[c.status] || c.status}</b><br><small>${who}${after ? ` · ${after}` : ''}</small></span></div>`; };
@@ -19496,7 +19563,10 @@ ${BUILD_HINT[t.id] || ''}` : name + (t.key ? ` (${t.key})` : '');
       const T = TURRETS[p.tur.type], i = p.tur.lv - 1, max = p.tur.lv >= MAX_LV, now = stats(T, i), next = max ? null : stats(T, i + 1), spN = special(p.tur.type, i + 1), spX = max ? '' : special(p.tur.type, i + 2);
       body = `<div class="ps-gun"><i class="ti ti-${T.icon}" aria-hidden="true"></i><div><b>${T.name}</b><small>${T.gear[i]}</small></div><span class="ps-lv">${p.tur.lv}<small>/${MAX_LV}단계</small></span></div>
         <div class="ps-tiles">${now.map(([n, v], q) => `<div><small>${n}</small><b>${v}</b>${next && next[q] && next[q][1] !== v ? `<em>→ ${next[q][1]}</em>` : ''}</div>`).join('')}</div>
-        ${spN ? `<p class="ps-note">함께 나가는 것: <b>${spN}</b></p>` : ''}${max ? '<p class="ps-note">최고 단계입니다.</p>' : `<p class="ps-note">증설하면 <b>${T.gear[i + 1]}</b>${spX && spX !== spN ? ` · ${spX}` : ''}</p>`}`;
+        ${spN ? `<p class="ps-note">함께 나가는 것: <b>${spN}</b></p>` : ''}${max ? '<p class="ps-note">최고 단계입니다.</p>' : `<p class="ps-note">증설하면 <b>${T.gear[i + 1]}</b>${spX && spX !== spN ? ` · ${spX}` : ''}</p>`}${max ? '' : (() => { // 강화의 목적이 바뀌는 단계를 따로 알린다
+          const n = p.tur.lv + 1, ty = p.tur.type, TURN = { 3: { mg: '이제 유탄이 함께 나갑니다: 몰려오는 보병(물량)에 강해집니다', sniper: '이제 대전차 미사일이 나갑니다: 장갑·보스를 잡는 단계 (맨몸 보병에는 절반)', aa: '이제 지대공 미사일이 나갑니다: 하늘 떼를 한꺼번에', mortar: '다연장 로켓으로 바뀝니다: 한 번에 여섯 발' }, 6: { mg: '이제 하늘 적도 쏩니다 (비호): 대공 초소 없이도 공중 웨이브를 버팁니다', mortar: 'K9 자주포: 한 발이 크고 넓어집니다' } };
+          const t = TURN[n]?.[ty]; return t ? `<p class="ps-note ps-turn" style="border-left:3px solid #ffd040;padding-left:6px"><b>${n}단계에서 성격이 바뀝니다</b> — ${t}</p>` : '';
+        })()}`;
       if (!max) {
         const req = upReq(w, p), lock = req.find((q) => !q.ok), c = T.cost[p.tur.lv];
         if (lock) body += `<ul class="upreq">${req.map((q) => `<li class="${q.ok ? 'ok' : 'no'}">${esc(q.text)}${!q.ok && q.cmd ? ' <button data-act="go-cmd">증축하러 가기</button>' : ''}</li>`).join('')}</ul>`;
