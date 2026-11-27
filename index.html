@@ -6,7 +6,17 @@
 <meta name="theme-color" content="#2c3a1e"><link rel="manifest" href="manifest.webmanifest"><link rel="apple-touch-icon" href="icon-180.png"><link rel="icon" href="icon-192.png">
 <script>/* 카톡 안 브라우저는 주소창·단추줄을 못 치운다: 폰 기본 브라우저로 넘긴다 */
 if (/KAKAOTALK/i.test(navigator.userAgent)) location.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(location.href);</script>
-<style>html,body{margin:0;height:100%;background:#2c3a1e;overscroll-behavior:none}</style>
+<style>html,body{margin:0;height:100%;background:#2c3a1e;overscroll-behavior:none}
+#fsguide{position:fixed;left:50%;bottom:calc(10px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:99999;display:flex;gap:10px;align-items:center;width:min(520px,calc(100% - 24px));box-sizing:border-box;padding:9px 12px;background:#1d2614;border:2px solid #c9b458;color:#f1e8c0;font:bold 14px/1.4 sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.5)}
+#fsguide b{color:#ffd400}#fsguide button{flex:none;border:0;background:#c9b458;color:#1d2614;font:bold 13px sans-serif;padding:6px 10px}</style>
+<script>/* 주소창 없애기: 안드로이드는 첫 터치에 전체 화면, 아이폰 사파리는 막혀 있어 '홈 화면에 추가' 안내만 (한 번 닫으면 그 판에선 안 뜬다) */
+(function(){var app=matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches||navigator.standalone;if(app||!matchMedia('(pointer: coarse)').matches)return;
+var ua=navigator.userAgent,ios=/iPhone|iPad|iPod/.test(ua)||(/Macintosh/.test(ua)&&navigator.maxTouchPoints>1),kakao=/KAKAOTALK/i.test(ua);
+addEventListener('pointerdown',function f(){var d=document.documentElement;if(d.requestFullscreen&&!document.fullscreenElement)d.requestFullscreen({navigationUI:'hide'}).catch(function(){});removeEventListener('pointerdown',f,true);},true);
+if(!ios&&!kakao)return;try{if(sessionStorage.getItem('fsguide'))return;}catch(e){}
+addEventListener('DOMContentLoaded',function(){var g=document.createElement('div');g.id='fsguide';
+g.innerHTML='<span>'+(kakao?'카톡 안에서는 주소창을 못 없앱니다. '+(ios?'오른쪽 아래 <b>⬆ → Safari로 열기</b>':'<b>⋮ → 다른 브라우저로 열기</b>'):'주소창 없이 하려면: 아래 <b>공유 ⬆ → 홈 화면에 추가</b> 후 바탕화면 아이콘으로 여세요')+'</span><button type="button">닫기</button>';
+g.querySelector('button').onclick=function(){g.remove();try{sessionStorage.setItem('fsguide','1')}catch(e){}};document.body.appendChild(g);});})();</script>
 </head><body>
 
   <script>/* 우클릭 메뉴(다른 이름으로 저장 등)는 게임 어디서도 뜨지 않게: 게임 코드가 뜨기 전부터, 가장 먼저 막는다 (글 쓰는 칸만 예외) */(function(){var f=function(e){var t=e.target;if(!(t&&t.closest&&t.closest('input,textarea')))e.preventDefault();};window.addEventListener('contextmenu',f,true);document.addEventListener('contextmenu',f,true);window.oncontextmenu=f;})();/* 페이지 전체는 절대 밀리지 않게: 링크(claude.ai) 안에서 창을 굴리면 맨 위 아이콘 줄이 화면 밖으로 사라졌다 */document.addEventListener('scroll',function(e){var t=e.target,d=document.documentElement;if(t===document||t===d||t===document.body||(t&&t.id==='app')){if(d.scrollTop||d.scrollLeft)d.scrollTop=d.scrollLeft=0;if(document.body.scrollTop)document.body.scrollTop=0;var a=document.getElementById('app');if(a&&(a.scrollTop||a.scrollLeft))a.scrollTop=a.scrollLeft=0;}},true);</script>
