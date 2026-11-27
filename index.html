@@ -1371,6 +1371,7 @@ button.ab.off { opacity: 1; background: var(--well); } button.ab.off .ab-t { col
 #start .tagline span { font-size: 13px; line-height: 1.55; color: #e8e0c0; }
 #start .tagline em { font-style: normal; font-weight: bold; color: #fff; }
 @media (max-height: 420px) { #start .tagline { margin: 0 0 6px; padding: 5px 8px; } #start .tagline b { font-size: 15px; } #start .tagline span { display: none; } }
+#start .tagline b { font-size: 22px; } #start .tagline b i { font-style: normal; color: #fff; text-shadow: 0 0 10px rgba(255,216,74,0.6); }
 
 </style>
 <div id="rotate" role="alert"><i class="ti ti-device-mobile-rotated" aria-hidden="true"></i><b>휴대폰을 가로로 돌려 주십시오</b><small>좋은 군대 만들기는 가로 화면에서 합니다. 두 손가락으로 확대·이동, 꾹 누르면 우클릭입니다.</small></div>
@@ -1638,7 +1639,7 @@ button.ab.off { opacity: 1; background: var(--well); } button.ab.off .ab-t { col
         <div class="win-body">
           <div class="stamp">부임</div>
           <h1>좋은 군대 만들기</h1>
-          <div class="tagline"><b>전역? 그 녀석은 말뚝 박았다.</b><span>이등병 때부터 키운 놈이 하사 달고 돌아온다. 여기서부터 진짜 군생활, <em>말뚝박은인생</em>.</span></div>
+          <div class="tagline"><b>전역 후 말뚝 박은 <i id="tag-sung">○</i>하사</b><span>이등병 때부터 키운 그 녀석, 전역 날 하사 달고 다시 들어온다.</span></div>
           <div id="resume" hidden>
             <button type="button" class="btn primary full big" id="resume-btn">이어하기</button>
             <div class="hint" id="resume-info"></div>
@@ -15538,13 +15539,13 @@ function drawBooms(r, world) {
   r.tbSeen = r.tbSeen || new Map();
   for (const b of world.tBooms || []) {
     let born = r.tbSeen.get(b.id);
-    if (born === undefined) { born = r.time; r.tbSeen.set(b.id, born); const q = BOOM[b.kind] || BOOM.def; r.shake = Math.max(r.shake || 0, q.shake * 1.4); if (q.shake >= 0.18) r.hitstop = Math.max(r.hitstop || 0, q.shake >= 0.3 ? 0.07 : 0.04); r.onBoom?.(true, b.x, b.y, b.kind); }
+    if (born === undefined) { born = r.time; r.tbSeen.set(b.id, born); const q = BOOM[b.kind] || BOOM.def; r.shake = Math.max(r.shake || 0, q.shake * 1.4);  r.onBoom?.(true, b.x, b.y, b.kind); }
     const age = r.time - born; if (age > 6) continue;
     const Q = BOOM[b.kind] || BOOM.def, [bx, by0] = r.iso(b.x, b.y), by = by0 - (b.air ? 32 * z : 0), S = Q.S * (1 + (b.fire || 0) * 0.15) * (['missile', 'sam', 'nade'].includes(b.kind) ? 1 + Math.max(0, (b.lv || 3) - 3) * 0.16 : 1);
     if (bx < -150 || bx > r.vw + 150 || by < -150 || by > r.vh + 150) continue;
     if (!b.air && b.kind !== 'nade') c.fillStyle = `rgba(30,22,14,${Math.min(0.55, (6 - age) / 6 * 0.6)})`; else c.fillStyle = 'rgba(0,0,0,0)'; c.beginPath(); c.ellipse(bx, by, 16 * z * S, 7 * z * S, 0, 0, Math.PI * 2); c.fill(); // 그을린 자국
     if (age > 2.2) continue;
-    if (Q.flash && age < 0.06) { c.fillStyle = `rgba(255,255,240,${Q.flash})`; c.fillRect(0, 0, r.vw, r.vh); } // 섬광 (포격·크레모아만: 자주 터지는 탄은 눈이 아프지 않게)
+    if (Q.flash && age < 0.1) { c.fillStyle = `rgba(255,255,240,${Q.flash})`; c.fillRect(0, 0, r.vw, r.vh); } // 섬광 (포격·크레모아만: 자주 터지는 탄은 눈이 아프지 않게)
     if (Q.ring && age < 0.5) { c.globalCompositeOperation = 'lighter'; c.strokeStyle = Q.ring; c.globalAlpha = 1 - age / 0.5; c.lineWidth = 4 * z * (1 - age); c.beginPath(); c.ellipse(bx, by, (8 + age * 220) * z, (4 + age * 110) * z, 0, 0, Math.PI * 2); c.stroke(); c.globalAlpha = 1; c.globalCompositeOperation = 'source-over'; } // 미사일: 색 충격파
     if (age < 0.9) { // 땅 먼지 고리: 납작하게 퍼진다
       const k = age / 0.9; c.strokeStyle = `rgba(150,125,90,${0.55 * (1 - k)})`; c.lineWidth = (6 - 4 * k) * z * S;
@@ -16799,11 +16800,18 @@ class Renderer {
       const [ax, ay] = this.iso(u.hitFx ?? u.x, u.hitFy ?? u.y), [bx, by] = this.iso(u.x, u.y), L = Math.hypot(bx - ax, by - ay) || 1;
       s = { n: u.hitN, born: this.time, ux: (bx - ax) / L, uy: (by - ay) / L, big: (u.hitD || 0) >= 2 || u.hitKill };
       m.set(u.id, s); if (m.size > 1500) m.clear();
-      if ((u.hitD || 0) >= 2 || (u.hitKill && (u.boss || u.elite))) (this.pops ??= []).push({ x: u.x, y: u.y, d: Math.round(u.hitD || 1), born: this.time, kill: !!u.hitKill, boss: !!u.boss });
+      (this.pops ??= []).push({ x: u.x, y: u.y, d: Math.round(u.hitD || 1), born: this.time, kill: !!u.hitKill, boss: !!u.boss });
     }
-    const age = this.time - s.born; if (age > 0.25) return null;
-    const k = (s.big ? 5 : 2.6) * this.cam.z * (1 - age / 0.25) ** 2;
-    return { dx: s.ux * k, dy: s.uy * k * 0.6, flash: age < 0.08 ? 0.95 : 0 };
+    const age = this.time - s.born; if (age > 0.3) return null;
+    const k = (s.big ? 8 : 4.5) * this.cam.z * (1 - age / 0.3) ** 2; // 맞으면 확 밀렸다 돌아온다 (타격감)
+    return { dx: s.ux * k, dy: s.uy * k * 0.6, flash: age < 0.12 ? 1 : 0, spark: age < 0.12 ? 1 - age / 0.12 : 0, big: s.big };
+  }
+  // 맞은 자리 불꽃: 몸통에서 사방으로 튀는 짧은 선 + 하얀 점
+  hitSpark(sx, sy, a, big) {
+    const c = this.ctx, z = this.cam.z, y = sy - 12 * z, n = big ? 8 : 5, R = (big ? 16 : 10) * z * (1.4 - a * 0.6);
+    c.save(); c.globalCompositeOperation = 'lighter'; c.strokeStyle = `rgba(255,${big ? 200 : 230},120,${a})`; c.lineWidth = (big ? 2.4 : 1.6) * z; c.beginPath();
+    for (let i = 0; i < n; i++) { const t = i / n * Math.PI * 2 + (big ? 0.3 : 0.6); c.moveTo(sx + Math.cos(t) * R * 0.35, y + Math.sin(t) * R * 0.35); c.lineTo(sx + Math.cos(t) * R, y + Math.sin(t) * R); }
+    c.stroke(); c.fillStyle = `rgba(255,255,230,${a})`; c.beginPath(); c.arc(sx, y, (big ? 5 : 3.2) * z * a, 0, Math.PI * 2); c.fill(); c.restore();
   }
   tintOf(cv, col) {
     const m = (this._tint ??= new Map()); let k = m.get(col); if (!k) m.set(col, (k = new WeakMap())); let t = k.get(cv); if (t) return t;
@@ -17075,7 +17083,7 @@ class Renderer {
     }
     if (u.tier) { const c = this.ctx, z = this.cam.z; c.strokeStyle = TIERS[u.tier][1]; c.globalAlpha = 0.75; c.lineWidth = 1.6 * z; c.beginPath(); c.ellipse(sx, sy, (8 + u.tier * 0.6) * z, (3.4 + u.tier * 0.3) * z, 0, 0, Math.PI * 2); c.stroke(); c.globalAlpha = 1; } // 부대 등급 색
     if (u.boss) { const c = this.ctx, z = this.cam.z, p = 0.5 + 0.5 * Math.sin(this.time * 4); c.fillStyle = `rgba(255,50,30,${0.18 + p * 0.12})`; c.beginPath(); c.ellipse(sx, sy, 22 * z, 10 * z, 0, 0, Math.PI * 2); c.fill(); }
-    { const hf = this.hitFx(u); if (hf) { sx += hf.dx; sy += hf.dy; u._flash = hf.flash; } else u._flash = 0; }
+    { const hf = this.hitFx(u); if (hf) { sx += hf.dx; sy += hf.dy; u._flash = hf.flash; if (hf.spark) this.hitSpark(sx, sy, hf.spark, hf.big); } else u._flash = 0; }
     const act = u.act, jab = act?.st === 'do' && (act.k === 'ram' || act.k === 'cut') ? Math.abs(Math.sin(this.time * 14 + u.id)) * 4 * this.cam.z * (u.dir > 0 ? 1 : -1) : 0; // 들이받고 뜯는 몸짓
     this.drawSprite({ x: u.x, y: u.y, phase: u.moving ? u.phase : 0, state: 'walk', flash: u._flash, moving: u.moving, attack: act?.st === 'do' }, u.boss ? { ...sp, key: art(`boss_${u.kind}_walk`) || art(`boss_${u.kind}_idle`) ? `boss_${u.kind}` : sp.key, px: sp.px * (2 + (u.tier || 0) * 0.12) } : u.tier || u.elite ? { ...sp, px: sp.px * (1 + (u.tier || 0) * 0.05 + (u.elite ? 0.15 : 0)) } : sp, sx + jab, sy, u.dir > 0 ? 1 : -1); // 보스는 두 배 덩치, 등급·정예도 커진다
     if (u.role) drawRole(this, u, sx, sy);
@@ -21173,6 +21181,7 @@ form.addEventListener('submit', (e) => {
 // 이어 하기: 저장이 있고 제대로 읽히면 버튼을 보인다
 // 본 저장이 깨졌으면 바로 전 저장으로
 const saved = World.deserialize(readSave() || '') || World.deserialize(readBackup() || '');
+{ const sung = document.getElementById('tag-sung'), set = (n) => { if (sung) sung.textContent = (n || '').trim()[0] || '○'; }; set(saved?.myName); nameInput.addEventListener('input', () => set(nameInput.value)); } // 첫 화면 한 줄: 내 병사 성을 넣어 '김하사'
 if (saved) {
   const me = saved.myName ? `내 병사 ${saved.myName}` : '';
   document.getElementById('resume-info').textContent = `${weekLabel(saved.week)}${me ? ' · ' + me : ''} · 병력 ${saved.soldiers.length}명`;
