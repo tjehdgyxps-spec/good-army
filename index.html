@@ -5635,7 +5635,7 @@ function cohesion(w, members) {
 // 5분대기조: 평소에 정해 둔 8명 (쉬는 병사 중 전투력 높은 순). 매주 다시 짠다
 function qrfMembers(w) {
   if (!w.qrfIds || w.qrfWeek !== w.week) {
-    w.qrfIds = w.soldiers.filter((s) => free(w, s)).sort((a, b) => fighter(b) - fighter(a)).slice(0, DEF.squadSize).map((s) => s.id);
+    w.qrfIds = w.soldiers.filter((s) => free(w, s)).sort((a, b) => !!b.mine - !!a.mine || fighter(b) - fighter(a)).slice(0, DEF.squadSize).map((s) => s.id); // 5분대기조는 내 병사가 이끈다
     w.qrfWeek = w.week;
   }
   return w.qrfIds.map((id) => w.soldier(id)).filter(Boolean);
@@ -8398,7 +8398,7 @@ const SQUAD = {
 };
 const SORTIE_NAME = Object.fromEntries(Object.entries(SQUAD).map(([k, q]) => [k, q.name]));
 const squadOpen = (w, k) => w.soldiers.filter((s) => !s.gone).length >= SQUAD[k].at;
-const RUN = 0.8, STAY = 240, RANGE = 6.5, GAP = 3.2;
+const RUN = 0.8, STAY = 240, RANGE = 10, GAP = 3.2; // 사거리: 철책 바깥 줄(쌓인 무리)까지 닿게
 const ready = (w, s) => s && !s.gone && !s.leaving && !w.isInjured(s) && !DUTY.has(s.state) && s.state !== 'away' && s.state !== 'hunt' && s.duty !== 'sniper' && !s.concern;
 
 // 지금 들어와 있거나 설치는 것 중 가장 급한 것 (단추를 두 번 누르면 그리로)
