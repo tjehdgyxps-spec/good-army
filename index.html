@@ -24,7 +24,7 @@ g.innerHTML='<div class="card">'+(kakao?'<h2>카톡 안에서는 화면이 좁�
 :'<h2>앱처럼 꽉 찬 화면으로 하세요</h2><p>이대로 하면 위아래 주소창이 게임을 가립니다. 30초면 됩니다.</p><ol><li><span>Safari <b>공유 ⬆ 단추</b> 누르기 (안 보이면 <b>···</b> 먼저)</span></li><li><span><b>홈 화면에 추가</b> 누르기</span></li><li><span>바탕화면 <b>좋은 군대</b> 아이콘으로 열기</span></li></ol>')
 +'<button type="button">그냥 이대로 할게요</button></div>';
 g.querySelector('button').onclick=function(){g.remove();try{sessionStorage.setItem('fsguide','1')}catch(e){}};document.body.appendChild(g);});})();</script>
-</head><body>
+</head><body oncontextmenu="return !!(event.target.closest &amp;&amp; event.target.closest('input,textarea'))">
 
   <script>/* 우클릭 메뉴(다른 이름으로 저장 등)는 게임 어디서도 뜨지 않게: 게임 코드가 뜨기 전부터, 가장 먼저 막는다 (글 쓰는 칸만 예외) */(function(){var f=function(e){var t=e.target;if(!(t&&t.closest&&t.closest('input,textarea')))e.preventDefault();};window.addEventListener('contextmenu',f,true);document.addEventListener('contextmenu',f,true);window.oncontextmenu=f;})();/* 페이지 전체는 절대 밀리지 않게: 링크(claude.ai) 안에서 창을 굴리면 맨 위 아이콘 줄이 화면 밖으로 사라졌다 */document.addEventListener('scroll',function(e){var t=e.target,d=document.documentElement;if(t===document||t===d||t===document.body||(t&&t.id==='app')){if(d.scrollTop||d.scrollLeft)d.scrollTop=d.scrollLeft=0;if(document.body.scrollTop)document.body.scrollTop=0;var a=document.getElementById('app');if(a&&(a.scrollTop||a.scrollLeft))a.scrollTop=a.scrollLeft=0;}},true);</script>
   <title>좋은 군대 만들기</title>
@@ -1382,9 +1382,10 @@ button.ab.off { opacity: 1; background: var(--well); } button.ab.off .ab-t { col
 #castnames summary { font-weight: 400; }
 
 </style>
-<div id="rotate" role="alert"><i class="ti ti-device-mobile-rotated" aria-hidden="true"></i><b>휴대폰을 가로로 돌려 주십시오</b><small>좋은 군대 만들기는 가로 화면에서 합니다. 두 손가락으로 확대·이동, 꾹 누르면 우클릭입니다.</small></div>
+<body oncontextmenu="return !!(event.target.closest &amp;&amp; event.target.closest('input,textarea'))">
+  <div id="rotate" role="alert"><i class="ti ti-device-mobile-rotated" aria-hidden="true"></i><b>휴대폰을 가로로 돌려 주십시오</b><small>좋은 군대 만들기는 가로 화면에서 합니다. 두 손가락으로 확대·이동, 꾹 누르면 우클릭입니다.</small></div>
   <div id="app">
-    <canvas id="view"></canvas>
+    <canvas id="view" oncontextmenu="return false"></canvas>
 
     <!-- 위: 아이콘 막대. 창은 끌지 않고, 한 번에 하나만 열린다 (PC는 오른쪽, 휴대폰은 아래) -->
     <header id="topbar" class="bar">
@@ -3991,7 +3992,7 @@ function survive(w, u, R) {
 function walk(u, x, y, step) {
   const dx = x - u.x, dy = y - u.y, L = Math.hypot(dx, dy); if (L < 0.15) return true;
   const q = Math.min(1, step / L); u.x += dx * q; u.y += dy * q; u.phase += Math.min(L, step) * 8; u.moving = true;
-  if (Math.abs(dx - dy) > 0.3) u.dir = dx - dy > 0 ? 1 : -1; // 마지막 한두 걸음에서 좌우로 뒤집히지 않게
+  if (Math.abs(dx - dy) > 0.6) u.dir = dx - dy > 0 ? 1 : -1; // 마지막 한두 걸음에서 좌우로 뒤집히지 않게
   return L <= step;
 }
 
@@ -4024,9 +4025,9 @@ function stepLaneUnit(w, u, dm, laps) {
     if (nx == null || !setGoal(w, u, nx)) { u.moving = false; u.phase += dm * 0.5; } // 갈 곳이 없으면 그 자리에서 (곧 철책을 넘는다)
     return;
   }
-  if (L.onSpot && stepAct(w, u, dm, L.slot[0], L.slot[1])) return; // 자리를 잡으면 저마다의 짓으로 초소를 친다
+  if (L.onSpot && stepAct(w, u, dm, L.slot[0], L.slot[1])) { if (L.faced) u.dir = L.faced; return; } // 자리를 잡으면 저마다의 짓으로 초소를 친다 (보는 쪽은 초소로 고정: 도리도리 없이)
   L.onSpot = walk(u, L.slot[0], L.slot[1], step * 0.7);
-  if (L.onSpot) { u.moving = false; u.phase += dm * 0.4; u.dir = (p.x - u.x) - (p.y - u.y) > 0 ? 1 : -1; }
+  if (L.onSpot) { u.moving = false; u.phase += dm * 0.4; const v = (p.x - u.x) - (p.y - u.y); L.faced ??= v > 0 ? 1 : -1; u.dir = L.faced; } // 초소 쪽을 본다 (거의 정면이면 그대로)
   if (u.role === 'sapper' && Math.hypot(u.x - p.x, u.y - p.y) < 3) { // 자폭이 아니라 폭약을 던져 놓고 빠진다 (그 조는 거기서 끝)
     (w.tBooms ||= []).push({ x: p.x, y: p.y, at: w.t, id: ++w.thoughtSeq, big: true, kind: 'strike' });
     hurtPost(w, p, postMax(p) * 0.22, '화공조'); w.addFx(p.x, p.y, '화공조 폭발!', '#ff6a52');
@@ -4127,7 +4128,7 @@ const h = (a, b) => { const n = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; re
 const SEE = 8.5; // 초소를 알아보는 거리
 const AT_POST = new Set(['shoot', 'throw', 'dive', 'puff', 'jam']); // 초소가 가까이 있어야 하는 짓
 const LAST = { prep: 14, shoot: 9, throw: 5, cut: 12, ram: 2, steal: 5, dive: 1, puff: 8, jam: 10 }; // 하는 데 걸리는 시간 (분)
-const face = (u, x, y) => { if (Math.abs((x - u.x) - (y - u.y)) > 0.01) u.dir = (x - u.x) - (y - u.y) > 0 ? 1 : -1; };
+const face = (u, x, y) => { if (Math.abs((x - u.x) - (y - u.y)) > 0.6) u.dir = (x - u.x) - (y - u.y) > 0 ? 1 : -1; }; // 거의 정면이면 보던 쪽 그대로 (좌우로 도리도리하지 않게)
 function run(u, x, y, step) {
   const dx = x - u.x, dy = y - u.y, L = Math.hypot(dx, dy), q = L ? Math.min(1, step / L) : 1;
   u.x += dx * q; u.y += dy * q; u.phase += Math.min(L, step) * 8; u.moving = true; face(u, x, y);
@@ -16808,7 +16809,7 @@ class Renderer {
       const [ax, ay] = this.iso(u.hitFx ?? u.x, u.hitFy ?? u.y), [bx, by] = this.iso(u.x, u.y), L = Math.hypot(bx - ax, by - ay) || 1;
       s = { n: u.hitN, born: this.time, ux: (bx - ax) / L, uy: (by - ay) / L, big: (u.hitD || 0) >= 2 || u.hitKill };
       m.set(u.id, s); if (m.size > 1500) m.clear();
-      (this.pops ??= []).push({ x: u.x, y: u.y, d: Math.round(u.hitD || 1), born: this.time, kill: !!u.hitKill, boss: !!u.boss });
+      if ((u.hitD || 0) >= 2 || (u.hitKill && (u.boss || u.elite))) (this.pops ??= []).push({ x: u.x, y: u.y, d: Math.round(u.hitD || 1), born: this.time, kill: !!u.hitKill, boss: !!u.boss });
     }
     const age = this.time - s.born; if (age > 0.3) return null;
     const k = (s.big ? 8 : 4.5) * this.cam.z * (1 - age / 0.3) ** 2; // 맞으면 확 밀렸다 돌아온다 (타격감)
