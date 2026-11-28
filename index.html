@@ -4051,8 +4051,9 @@ function assignRoles(no, list) {
   for (let i = 0; roles.some(([, n]) => n > i) && k < list.length / 2; i++) for (const [id, n] of roles) {
     if (i >= n || k >= list.length / 2) continue;
     let at = id === 'shield' ? i * 4 : Math.floor(h(no * 5 + k, 97) * list.length); // 방패는 앞줄
-    for (let t = 0; list[at]?.role && t < list.length; t++) at = (at + 1) % list.length; // 이미 병과가 있으면 옆자리
-    if (list[at] && !list[at].role) list[at] = { kind: gruntOf(no), elite: false, role: id };
+    const taken = (u) => u?.role || ROSTER_KINDS[u?.kind]?.air; // 하늘 적은 병과를 맡지 않는다
+    for (let t = 0; taken(list[at]) && t < list.length; t++) at = (at + 1) % list.length; // 이미 병과가 있으면 옆자리
+    if (list[at] && !taken(list[at])) { list[at].role = id; list[at].elite = false; } // 제 종류는 그대로 두고 병과만 얹는다 (예전엔 흔한 보병으로 바꿔 웨이브가 다 똑같아 보였다)
     k++;
   }
 }
@@ -5075,6 +5076,8 @@ const HORDE_HP = {};
 // 장갑: 기관총·발칸은 절반만 박힌다 (저격·박격포를 섞어야 하는 이유). 정예 보병은 50주부터 방탄 장비를 갖춘다
 const ARMORED = new Set();
 for (const [k, v] of Object.entries(ROSTER_KINDS)) { HORDE_HP[k] = v.hp; if (v.armored) ARMORED.add(k); }
+// 그림 덩치: 맷집 1(떼) 0.8배 … 2.2(보병) 1배 … 5 이상(전차·공성 수레) 1.4배. 한눈에 소형·중형·대형이 갈린다
+const foeSize = (k) => Math.max(0.8, Math.min(1.4, ((HORDE_HP[k] || 2.2) / 2.2) ** 0.4));
 const isArmored = (u) => ARMORED.has(u.kind) || u.boss || (u.elite && u.week >= 50);
 // 정예 확률: 20주부터 오르기 시작해 2년 끝 약 35%
 const eliteChance = (w) => Math.max(0, Math.min(0.4, (sw(w) - 8) / 200));
@@ -5148,15 +5151,36 @@ function pickKind(b, cls, turn = 0) {
   const list = pool.length ? pool : era.filter((k) => clsOf(k) === 'line');
   return list[((b - 1) % 3 + turn + Math.floor((b - 1) / BLOCKS)) % list.length];
 }
+// 웨이브는 한 종류 떼가 아니라 섞인 군대: 이 칸 성격의 주력 + 떼(소형)·보병(중형)·중장비(대형)·정예(특수). 하늘 적은 공중 칸과 보스 칸에만
+// (대공이 없는 초반 초소가 공중 칸 말고는 하늘에 당하지 않게). 몫은 정해져 있어 몇 명인지 미리 정확히 보인다
+const MIX = {
+  line:  [['line', 0.45], ['swarm', 0.2], ['rush', 0.15], ['armor', 0.1], ['elite', 0.1]],
+  rush:  [['rush', 0.45], ['swarm', 0.2], ['line', 0.2], ['elite', 0.15]],
+  armor: [['armor', 0.4], ['line', 0.3], ['swarm', 0.2], ['elite', 0.1]],
+  swarm: [['swarm', 0.55], ['rush', 0.2], ['line', 0.15], ['armor', 0.1]],
+  air:   [['air', 0.5], ['line', 0.25], ['swarm', 0.15], ['armor', 0.1]],
+  elite: [['elite', 0.35], ['armor', 0.2], ['line', 0.2], ['rush', 0.15], ['air', 0.1]],
+};
+// N명을 몫대로 나눈다 (큰 나머지 순). 주력은 적어도 한 명
+function mixCounts(theme, N) {
+  const m = MIX[theme] || MIX.line, raw = m.map(([c, f]) => [c, N * f]), out = raw.map(([c, x]) => [c, Math.floor(x)]);
+  if (N > 0 && !out[0][1]) out[0][1] = 1;
+  let left = N - out.reduce((a, [, n]) => a + n, 0);
+  for (const i of raw.map((r, i) => i).sort((a, b) => (raw[b][1] % 1) - (raw[a][1] % 1))) { if (left <= 0) break; out[i][1]++; left--; }
+  return out.filter(([, n]) => n > 0);
+}
 function planWave(w, no) {
   const P = roundPlan(no), theme = P.slot === 'boss' ? 'elite' : P.slot, T = THEMES[theme], list = [];
-  const lead = pickKind(P.block, theme), side = airSide(w, no, FOES) || pickKind(P.block, 'line', 1), grunt = gruntOf(no), again = P.block > BLOCKS ? '되돌아온 ' : '';
-  // 주인공 65% · 그 시대 보병 대열 20% · 흔한 보병 나머지 (정해진 몫이라 몇 명인지 미리 정확히 보인다. 공중 웨이브는 하늘 적과 땅 적이 섞인다)
-  const N = Math.round(P.total * (1 + pk(w, 'foeN'))), nLead = Math.max(1, Math.round(N * 0.65)), nSide = Math.round(N * 0.2);
-  for (let i = 0; i < N; i++) {
-    const kind = i < nLead ? lead : i < nLead + nSide ? side : grunt;
-    list.push({ kind, elite: h(no * 7 + i, 29) < eliteChance(w) + T.el });
+  const lead = pickKind(P.block, theme), sky = airSide(w, no, FOES), again = P.block > BLOCKS ? '되돌아온 ' : '';
+  const N = Math.round(P.total * (1 + pk(w, 'foeN')));
+  let t = 0;
+  for (const [cls, n] of mixCounts(theme, N)) { // 넷 이상이면 그 갈래 안에서도 두 종류로
+    const a = cls === theme ? lead : cls === 'air' && sky ? sky : pickKind(P.block, cls, ++t), b = n >= 4 ? [1, 2, 3, 4].map((d) => pickKind(P.block, cls, t + d)).find((k) => k !== a) || a : a; t++;
+    for (let i = 0; i < n; i++) list.push({ kind: i < Math.ceil(n * 0.6) ? a : b });
   }
+  if (sky && theme !== 'air' && theme !== 'elite' && N >= 6) list[list.length - 1].kind = sky; // 끝없는 복무: 하늘 적이 조금씩 섞인다
+  const mixed = list.map((u, i) => [h(no * 131 + i, 31), u]).sort((x, y) => x[0] - y[0]).map(([, u]) => u); list.splice(0, list.length, ...mixed); // 갈래끼리 섞어 세운다 (숲에 남는 뒷몫도 섞이게)
+  list.forEach((u, i) => { u.elite = h(no * 7 + i, 29) < eliteChance(w) + T.el; });
   assignRoles(no, list);
   const boss = P.slot === 'boss' && w.lastBossNo !== no ? bossFor(w, P.block) : null; // 구간마다 여섯째 웨이브에 보스: 그대로 총공세를 이끈다
   if (boss) w.lastBossNo = no;
@@ -5603,7 +5627,7 @@ function hordeBreach(w, n) {
   return { bx: fx, by: fy, kinds: pick.map((u) => u.kind), units: pick, spread: !!w.push, doors };
 }
 
-return { WAVE_GAP, waveSize, hpScale, HORDE_HP, ARMORED, isArmored, eliteChance, THEMES, TIERS, tierOf, BOSSES, bossFor, FOES, nearestD, loopPos, wanted, planWave, pileSummary, pileText, RUSH_SPEED, STAGE_BACK, STAGE_MIN, LANE_OFF, LANE_SPEED, LAPS, LANE_GAP, LANE_STAGE, laneHp, CORNERS, gateOf, gatePos, laneLen, pileSlot, postScore, weakestPost, startLane, rushNeed, rushTarget, startRush, localDefense, FENCE_UP, FENCE_NAME, upgradeFence, repairBreach, orderReinforce, setWinner, setLeakSpawner, mobWanted, stepHorde, hordeBreach };
+return { WAVE_GAP, waveSize, hpScale, HORDE_HP, ARMORED, foeSize, isArmored, eliteChance, THEMES, TIERS, tierOf, BOSSES, bossFor, FOES, nearestD, loopPos, wanted, MIX, mixCounts, planWave, pileSummary, pileText, RUSH_SPEED, STAGE_BACK, STAGE_MIN, LANE_OFF, LANE_SPEED, LAPS, LANE_GAP, LANE_STAGE, laneHp, CORNERS, gateOf, gatePos, laneLen, pileSlot, postScore, weakestPost, startLane, rushNeed, rushTarget, startRush, localDefense, FENCE_UP, FENCE_NAME, upgradeFence, repairBreach, orderReinforce, setWinner, setLeakSpawner, mobWanted, stepHorde, hordeBreach };
 })();
 // ===== src/defense.js =====
 __X["src/defense.js"] = (function () {
@@ -9651,7 +9675,7 @@ class World {
   //      undefined = 방향을 정하지 않음 → 도로가 닿은 쪽을 입구로 (처음 배치·옛 저장·시험용)
   addBuilding(type, x, y, rot) {
     const def = BUILDINGS[type];
-    const r = type === 'range' ? 0 : Number(rot) || 0;
+    const r = Number(rot) || 0;
     const [bw, bh] = this.dims(type, r);
     const b = { id: this.nextId++, type, x, y, w: bw, h: bh, rot: r % 2 === 1, occupants: new Set(), slots: def.flat ? new Array(def.cap).fill(0) : null };
     if (this.hasDoor(b)) b.door = rot == null ? this.autoDoor(b) : r % 4;
@@ -9716,7 +9740,7 @@ class World {
   // 건물 크기 (돌리면 가로·세로가 바뀐다. 사격장은 사로 방향이 있어 돌리지 않는다)
   dims(type, rot) {
     const def = BUILDINGS[type];
-    return Number(rot) % 2 === 1 && type !== 'range' ? [def.h, def.w] : [def.w, def.h];
+    return Number(rot) % 2 === 1 ? [def.h, def.w] : [def.w, def.h];
   }
 
   // 초소 자리 (초소 위·바로 옆에는 못 짓는다)
@@ -11162,8 +11186,9 @@ class World {
       b.slots[k] = s.id;
       s.slot = k;
       if (b.type === 'range') {
-        s.x = b.x + 0.3 + (k % 12) * 0.48;
-        s.y = b.y + 1.55 - Math.floor(k / 12) * 0.7;
+        const along = 0.3 + (k % 12) * 0.48, back = 1.55 - Math.floor(k / 12) * 0.7; // 세로로 돌린 사격장은 축을 바꾼다
+        s.x = b.x + (b.rot ? back : along);
+        s.y = b.y + (b.rot ? along : back);
       } else {
         const cols = 8;
         s.x = b.x + 0.6 + (k % cols) * 0.5;
@@ -11594,11 +11619,13 @@ class RaidUI {
   // 자막은 한 번에 하나: 앞 자막이 끝나고 다음 것. 밀리면 오래된 건 버린다
   banner(title, sub, kind = '') {
     (this.bq ??= []).push([title, sub, kind]);
-    if (this.bq.length > 2) this.bq.splice(0, this.bq.length - 2);
+    if (this.bq.length > 5) this.bq.splice(0, this.bq.length - 5); // 다섯까지는 하나도 버리지 않고 차례로
     if (!this.bBusy) this.nextBanner();
   }
+  bannerShowing() { return !!$('jindo-banner') && !$('jindo-banner').hidden; }
   nextBanner() {
-    if (document.querySelector('.modal:not([hidden])') || !$('mg').hidden || !$('perkbox').hidden) { if (this.bq.length) { this.bBusy = true; setTimeout(() => this.nextBanner(), 600); } else this.bBusy = false; return; } // 창이 떠 있으면 닫힌 뒤에
+    const toast = this.app.ui?.toastNow != null; // 짧은 알림이 떠 있으면 그게 끝난 뒤에 (겹치지 않게)
+    if (toast || document.querySelector('.modal:not([hidden])') || !$('mg').hidden || !$('perkbox').hidden || !$('squadtalk')?.hidden) { if (this.bq.length) { this.bBusy = true; setTimeout(() => this.nextBanner(), 600); } else this.bBusy = false; return; } // 창·대화가 떠 있으면 닫힌 뒤에
     const it = this.bq.shift();
     if (!it) { this.bBusy = false; return; }
     this.bBusy = true; this.lastBannerAt = performance.now();
@@ -16025,7 +16052,7 @@ const { animalSprite, soldierSprite } = __X["src/sprites.js"];
 const { wallMax } = __X["src/crew.js"];
 const { SQUAD } = __X["src/sortie.js"];
 const { drawLandmark, CMD_STYLE } = __X["src/landmark.js"];
-const { FOES, TIERS, gatePos } = __X["src/horde.js"];
+const { FOES, TIERS, gatePos, foeSize } = __X["src/horde.js"];
 const { drawRole, drawPanic, drawBrain, drawAct } = __X["src/foefx.js"];
 const { DUTIES } = __X["src/duties.js"];
 const { levelStyle, dressBase, dressBuilding, dressBunker, dressFence, soldierMarks, soldierGlow, TRACER, dressWatch, armsFlash } = __X["src/dress.js"];
@@ -16601,19 +16628,20 @@ class Renderer {
     // 사로 구분선
     c.strokeStyle = 'rgba(255,255,255,0.55)';
     c.lineWidth = 1 * z;
+    // u = 사로가 늘어선 긴 쪽, v = 표적에서 사수 쪽. 세로로 돌린 사격장은 두 축을 바꾼다
+    const P = (u, v) => this.iso(b.x + (b.rot ? v : u), b.y + (b.rot ? u : v)), L = b.rot ? b.h : b.w, S = b.rot ? b.w : b.h;
     c.beginPath();
     for (let i = 1; i < 12; i++) {
-      const x = b.x + i * 0.5;
-      c.moveTo(...this.iso(x, b.y + 0.35));
-      c.lineTo(...this.iso(x, b.y + b.h));
+      c.moveTo(...P(i * 0.5, 0.35));
+      c.lineTo(...P(i * 0.5, S));
     }
     c.stroke();
     // 뒤쪽 흙둑과 표적
-    const p0 = this.iso(b.x, b.y), p1 = this.iso(b.x + b.w, b.y);
+    const p0 = P(0, 0), p1 = P(L, 0);
     this.poly([p0, p1, [p1[0], p1[1] - 9 * z], [p0[0], p0[1] - 9 * z]], '#8a6f47');
-    this.poly([p0, p1, this.iso(b.x + b.w, b.y + 0.3), this.iso(b.x, b.y + 0.3)], '#9c7f53');
+    this.poly([p0, p1, P(L, 0.3), P(0, 0.3)], '#9c7f53');
     for (let i = 0; i < 12; i++) {
-      const [tx, ty] = this.iso(b.x + 0.25 + i * 0.5, b.y + 0.25);
+      const [tx, ty] = P(0.25 + i * 0.5, 0.25);
       c.fillStyle = '#f4efe2';
       c.fillRect(tx - 2.5 * z, ty - 9 * z, 5 * z, 7 * z);
       c.fillStyle = '#c8102e';
@@ -17489,7 +17517,7 @@ class Renderer {
   }
   // 적 지대 한 마리 (철책 밖)
   drawHordeUnit(u) {
-    const sp = animalSprite(FOES[u.kind]?.sprite || 'foe_han');
+    const sp0 = animalSprite(FOES[u.kind]?.sprite || 'foe_han'), sz = foeSize(u.kind), sp = sz === 1 ? sp0 : { ...sp0, px: sp0.px * sz, px0: sp0.px0 || sp0.px }; // 소형·중형·대형: 맷집만큼 덩치가 다르다
     if (!sp) return;
     let [sx, sy] = this.iso(u.x, u.y);
     if (sx < -80 || sx > this.vw + 80 || sy < -80 || sy > this.vh + 80) return;
@@ -18774,9 +18802,9 @@ class Guide {
   }
 
   // 0.2초마다. free: 지금 안내를 띄워도 되는 때인가
-  tick(free) {
+  tick(free, keep = free) { // keep: 다른 창이 실제로 떴을 때만 닫는다 (기다리는 카드가 있다는 이유로 방금 뜬 소개를 지우지 않게)
     const w = this.w, know = this.know();
-    if (this.cur && (!free || know[this.cur.id])) this.hide();
+    if (this.cur && (!keep || know[this.cur.id])) this.hide();
     for (const f of FEATURES) if (f.hide) this.el(f)?.classList.toggle('unmet', this.shut(f));
     if (!free || this.cur || w.knowOff || w.awaitingUnit || performance.now() < this.nextAt) return;
     const f = FEATURES.find((x) => x.card && !know[x.id] && this.ready(x));
@@ -18785,7 +18813,7 @@ class Guide {
     const el = this.el(f); el?.classList.remove('unmet'); el?.classList.add('tip-ring');
     const go = f.dock || f.at || f.id === 'more' || f.id === 'alerts';
     this.box.innerHTML = `<header><i class="ti ti-${f.icon}" aria-hidden="true"></i><b>${f.name}</b>${f.key && !touch() ? `<kbd>${f.key}</kbd>` : ''}<em>새 기능</em></header><p>${forTouch(f.say)}</p><p class="tip-when"><span>언제 쓰나</span>${f.when}</p><footer><button class="linkbtn" data-t="off">소개 그만 보기</button><button class="btn" data-t="ok">알겠습니다</button>${go ? `<button class="btn primary" data-t="go">${f.at ? '가 보기' : '열어 보기'}</button>` : ''}</footer>`;
-    this.box.hidden = false; this.box.classList.remove('pop'); void this.box.offsetWidth; this.box.classList.add('pop');
+    this.box.hidden = false; this.box.classList.remove('pop'); void this.box.offsetWidth; this.box.classList.add('pop'); this.shownAt = performance.now();
     this.app.sound?.ui?.('open');
   }
 
@@ -19471,10 +19499,10 @@ ${BUILD_HINT[t.id] || ''}` : name + (t.key ? ` (${t.key})` : '');
   // 건물 돌리기 (T 키 또는 버튼): 가로·세로를 바꿔 놓는다
   // 누를 때마다 90도씩 돈다 (우클릭·T·버튼). 입구 방향이 따라 돈다
   toggleRotate() {
-    this.rot = ((this.rot || 0) + 1) % 4;
+    this.rot = ((this.rot || 0) + 1) % 4; this.rotManual = true; // 직접 돌린 방향은 튜토리얼 추천 자리·철책 벙커 자동 맞춤이 덮어쓰지 않는다
     const b = this.$('buildrot');
     if (b) { b.classList.toggle('on', this.rot !== 0); b.dataset.dir = '↙↘↗↖'[this.rot]; }
-    this.toast(`입구 방향 ${'↙↘↗↖'[this.rot]} · 우클릭(T)으로 90도씩 돌립니다`);
+    this.$('ticker-text').textContent = `입구 방향 ${'↙↘↗↖'[this.rot]} · 우클릭(T)으로 90도씩 돌립니다`; // 알림 줄에 세우면 늦게 떠서 안 돈 것처럼 보인다: 아래 줄에 바로
   }
 
   // Tab = 다음 건설 탭
@@ -19491,10 +19519,11 @@ ${BUILD_HINT[t.id] || ''}` : name + (t.key ? ` (${t.key})` : '');
     // 다른 카테고리의 도구를 고르면 (단축키 R·X 등) 그 탭으로 넘어간다
     const t = TOOLS.find((x) => x.id === id);
     if (t && t.cat !== '*' && t.cat !== this.buildCat) { this.buildCat = t.cat; this.tool = id; this.buildToolbar(); }
+    if (this.tool !== id) this.rotManual = false;
     this.tool = id;
     if (id !== 'select') { this.app.stopAim?.(); this.setStrike(false); } // 짓는 도구를 들면 출동·포격 조준은 푼다
     const rb = this.$('buildrot');
-    if (rb) rb.hidden = !BUILDINGS[id] || id === 'range';
+    if (rb) rb.hidden = !BUILDINGS[id];
     const hint = this.$('buildhint');
     if (hint) {
       const def = BUILDINGS[id];
@@ -19516,15 +19545,27 @@ ${BUILD_HINT[t.id] || ''}` : name + (t.key ? ` (${t.key})` : '');
     for (const k of [0, 1, 2, 4]) this.$(`sp-${k}`).classList.toggle('on', k === s);
   }
 
+  // 짧은 알림: 앞 알림을 지우지 않고 줄을 선다 (예전엔 다음 알림이 바로 덮어써 앞 것을 못 읽었다).
+  // 큰 자막(배너)이 떠 있으면 끝난 뒤에. 같은 말이 잇달아 오면 한 번만. 밀리면 조금 빨리 넘긴다 (2.2초 → 1.5초)
   toast(text) {
     text = forTouch(text);
-    const t = this.$('toast');
-    t.textContent = text;
-    this.$('ticker-text').textContent = text;
-    t.classList.add('show');
-    clearTimeout(this.toastTimer);
-    this.toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+    this.$('ticker-text').textContent = text; // 아래 한 줄 소식은 바로
+    this.tq ??= [];
+    if (this.tq.at(-1) === text || (this.toastNow === text && !this.tq.length)) return;
+    this.tq.push(text); if (this.tq.length > 8) this.tq.splice(0, this.tq.length - 8);
+    this.nextToast();
   }
+  nextToast() {
+    if (this.toastNow != null) return;
+    const ban = this.app.raidUI?.bannerShowing?.();
+    if (ban) { clearTimeout(this.toastWait); this.toastWait = setTimeout(() => this.nextToast(), 400); return; }
+    const text = this.tq?.shift(); if (text == null) return;
+    const t = this.$('toast'); this.toastNow = text;
+    t.textContent = text; t.classList.add('show');
+    clearTimeout(this.toastTimer);
+    this.toastTimer = setTimeout(() => { t.classList.remove('show'); setTimeout(() => { this.toastNow = null; this.nextToast(); }, 250); }, this.tq.length >= 2 ? 1500 : 2200);
+  }
+  toastBusy() { return this.toastNow != null || !!this.tq?.length; }
 
   selectSoldier(id) {
     this.selected = id;
@@ -21473,9 +21514,10 @@ app.openModal = (name) => {
   if (name === 'event') { ui.renderEvent(world, () => { sound.stamp(); closeModal(); if (world.soldiers.some((s) => s.state === 'hunt')) ui.setSpeed(1); }); sound.call('muster'); sound.play('paper'); }
   document.getElementById(name).hidden = false;
 };
-// 창 순서 정리: 하나가 닫히면 5초 숨 돌린 뒤 다음 것 (웨이브·대화·결정·임무 알림이 한꺼번에 쏟아지지 않게)
+// 창 순서 정리: 하나가 닫히면 20초 숨 돌린 뒤 다음 것 (대화 뒤 사건, 사건 뒤 사건이 연달아 뜨지 않게 · 사용자 제보)
+const POPUP_GAP = 20000;
 let calmUntil = 0;
-const breathe = (ms = 5000) => { calmUntil = Math.max(calmUntil, performance.now() + ms); };
+const breathe = (ms = POPUP_GAP) => { calmUntil = Math.max(calmUntil, performance.now() + Math.max(ms, POPUP_GAP)); };
 let talkNext = 0; // 대화와 대화 사이 8초
 let talkOff = false; // 대화 안 보기: 오른쪽 아래 단추에 쌓아 둔다
 try { talkOff = localStorage.getItem('good-army-talkoff') === '1'; } catch { /* 저장소를 못 쓰는 환경 */ }
@@ -21489,10 +21531,11 @@ function openTalk() {
   ui.closeMore?.(); setTray(false); if (innerHeight <= 800) app.closeDocks(); // 대화는 가운데 혼자 뜬다
   talkShown = true; // 게임은 멈추지 않는다: 가운데 창만 뜨고 뒤에서는 총을 계속 쏜다
   const id = world.talkQueue.shift();
-  ui.showTalk(world, id, (folded) => { talkShown = false; talkNext = performance.now() + 25000; if (folded) world.talkQueue.unshift(id); writeSave(); });
+  ui.showTalk(world, id, (folded) => { talkShown = false; talkNext = performance.now() + 25000; breathe(); if (folded) world.talkQueue.unshift(id); writeSave(); }); // 대화가 끝나도 20초는 다른 창을 띄우지 않는다
 }
 document.getElementById('perk-tab').addEventListener('click', () => { ui.perkFold = false; ui.updatePerks(world); });
-const calm = () => performance.now() >= calmUntil && !raidUI.bBusy && performance.now() - (raidUI.lastBannerAt || -1e9) > 8000; // 자막이 떠 있거나 8초 안이면 창을 미룬다
+const tipUp = () => guide.cur && performance.now() - (guide.shownAt || 0) < 10000; // 새 기능 소개는 10초는 보여 준다
+const calm = () => performance.now() >= calmUntil && !tipUp() && !raidUI.bBusy && !ui.toastBusy?.() && performance.now() - (raidUI.lastBannerAt || -1e9) > 8000; // 자막·짧은 알림이 떠 있거나 자막 뒤 8초 안이면 창을 미룬다
 function closeModal() {
   if (!openModalName) return;
   if (openModalName === 'event' && world.event) return; // 사건 카드는 골라야 닫힌다
@@ -21791,6 +21834,7 @@ function openMinigame(id, mode = 'real', prevSpeed = null) {
 
 let savedWeek = -1, checkedWeek = -1;
 const raidUI = new RaidUI({ world: () => world, ui, sound, renderer, openDock: (n) => app.openDock(n), keysOff: () => app.keysOff(), tutPost: () => tut.active() && tut.post(), isDragging: () => !!(drag && drag.moved) });
+app.raidUI = raidUI; // 짧은 알림이 큰 자막과 겹치지 않게 서로 본다 (ui.toast)
 let boomTimes = [];
 let smallBoomAt = 0;
 renderer.onBoom = (big, x, y, kind) => {
@@ -21831,8 +21875,8 @@ function tileAt(e) {
 }
 
 function buildAnchor(tool, tx, ty) {
-  const at = ['barracks', 'mess', 'bunker'].includes(tool) && tut.snap(tx, ty); if (at) return at;
-  if (tool === 'bunker') { // 철책 가까이 대면: 철책을 따라 눕히고, 철책에 걸리면 바로 안쪽 칸으로 붙인다 (철책 맨 앞 진지)
+  const at = !ui.rotManual && ['barracks', 'mess', 'bunker'].includes(tool) && tut.snap(tx, ty); if (at) return at;
+  if (tool === 'bunker' && !ui.rotManual) { // 철책 가까이 대면: 철책을 따라 눕히고, 철책에 걸리면 바로 안쪽 칸으로 붙인다 (철책 맨 앞 진지)
     const W = world.W, H = world.H, dx = Math.min(tx - 1, W - 2 - tx), dy = Math.min(ty - 1, H - 2 - ty);
     if (Math.min(dx, dy) <= 3 && Math.min(dx, dy) >= 0) {
       ui.rot = dx < dy ? 1 : 0; const [bw, bh] = world.dims(tool, ui.rot);
@@ -21925,7 +21969,7 @@ function onPointerDown(e) {
   if (!started) return;
   if (e.pointerType === 'touch' && !e.long && touchDown(e)) return;
   try { canvas.setPointerCapture(e.pointerId); } catch { /* 길게 누르기로 만든 가짜 누르기 */ }
-  if (e.button === 2 && BUILDINGS[ui.tool] && ui.tool !== 'range') { ui.toggleRotate(); sound.click?.(); return; } // 롤러코스터처럼 우클릭으로 90도씩
+  if (e.button === 2 && BUILDINGS[ui.tool]) { ui.toggleRotate(); sound.click?.(); if (!e.long) updateHover(e); return; } // 롤러코스터처럼 우클릭으로 90도씩
   if (e.button === 2) { // 지은 건물에 우클릭: 입구 방향을 90도씩 돌린다
     const [tx, ty] = tileAt(e), b = world.buildingAt(tx, ty);
     const side = b ? world.turnDoor(b.id) : null;
@@ -21976,7 +22020,7 @@ function placeAt(tool, tx, ty) {
     return;
   }
   if (!BUILDINGS[tool]) return;
-  if (['barracks', 'mess', 'bunker'].includes(tool) && tut.snap(tx, ty)) ui.rot = tut.snapTo.side; // 튜토리얼 추천 자리: 방향이 돌아가 있어도 맞춰 짓는다
+  if (!ui.rotManual && ['barracks', 'mess', 'bunker'].includes(tool) && tut.snap(tx, ty)) ui.rot = tut.snapTo.side; // 튜토리얼 추천 자리: 방향이 돌아가 있어도 맞춰 짓는다
   const [ax, ay] = buildAnchor(tool, tx, ty);
   const res = world.place(tool, ax, ay, ui.rot || 0); // 플레이어가 고른 입구 방향 (기본 ↙)
   if (!res.ok) { ui.toast(res.why); sound.ui('error'); return; }
@@ -22342,17 +22386,17 @@ function frameBody(now) {
     const nq = started && !talkShown ? (world.talkQueue?.length || 0) : 0;
     // 막는 것은 미니게임·결정 창·전역식·진돗개뿐이다 (건설 중이거나 옆 창을 보고 있어도 뜬다: 게임도 안 멈추고 창 밖도 눌린다)
     const talkBlock = talkShown || fwShown || mgOpen || !!openModalName || world.raid || [...document.querySelectorAll('.modal')].some((m) => !m.hidden);
-    if (nq && !talkBlock && !assault && !tut.active() && ui.tool === 'select' && calm() && document.getElementById('perkbox').hidden && performance.now() > talkNext && !talkOff) openTalk();
+    if (nq && !talkBlock && !fwShown && !world.event && !assault && !tut.active() && ui.tool === 'select' && calm() && document.getElementById('perkbox').hidden && performance.now() > talkNext && !talkOff) openTalk();
     { const tb = document.getElementById('talk-tab'), on = talkOff && nq > 0 && !talkBlock; tb.hidden = !on; if (on) { const t = `대화 ${nq}`; if (tb.textContent !== t) tb.textContent = t; } if (talkOff && nq > 6) world.talkQueue.splice(0, nq - 6); }
     // 내 병사 전역식·순직: 교전이 끝나고 다른 창이 없을 때
     if (started && world.myFarewell && !assault && !busy() && !world.event && !world.raid && !world.fired && calm()) {
       fwShown = true; const prev = ui.speed || 1; ui.setSpeed(0); sound.call('done');
       ui.showFarewell(world, () => { fwShown = false; ui.setSpeed(prev); ui.updateMyCard(world); writeSave(); breathe(); });
     }
-    if (started) guide.tick(!tut.active() && !busy() && !assault && !world.event && calm() && ['perkbox', 'panel', 'wavemore'].every((id) => document.getElementById(id).hidden));
+    if (started) guide.tick(!tut.active() && !busy() && !assault && !world.event && calm() && ['perkbox', 'panel', 'wavemore'].every((id) => document.getElementById(id).hidden), !openModalName && !talkShown && !fwShown && !mgOpen && !assault && !tut.active());
     if (started && world.event && !tut.active() && !fwShown && !talkShown && !mgOpen && openModalName !== 'event' && openModalName !== 'term' && !world.fired && calm() && !assault && document.getElementById('perkbox').hidden && !(dockOpen || !document.getElementById('buildtray').hidden || ui.tool !== 'select' || ui.strikeMode || drag)) app.openModal('event'); // 짓거나 창을 보는 중엔 기다린다
-    if (started && world.termDue && !fwShown && !talkShown && !mgOpen && openModalName !== 'term' && openModalName !== 'event' && !world.fired) app.openModal('term');
-    if (started && world.justDone && calm() && !world.waveRush?.phase?.startsWith('charge') && !openModalName && !talkShown) { ui.missionDone(world.justDone); world.justDone = null; sound.call('done'); breathe(3000); }
+    if (started && world.termDue && !fwShown && !talkShown && !mgOpen && openModalName !== 'term' && openModalName !== 'event' && !world.fired && calm()) app.openModal('term');
+    if (started && world.justDone && calm() && !world.waveRush?.phase?.startsWith('charge') && !openModalName && !talkShown && !fwShown) { ui.missionDone(world.justDone); world.justDone = null; sound.call('done'); breathe(); }
     if (started) {
       const hm = Math.floor(world.minute);
       if (lastHM < 360 && hm >= 360 && hm < 420) sound.bugle('wake');
